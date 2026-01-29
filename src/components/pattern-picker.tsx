@@ -154,7 +154,12 @@ export function PatternPicker({
             min={1}
             max={31}
             value={customDays}
-            onChange={(e) => handleCustomDaysChange(parseInt(e.target.value, 10))}
+            onChange={(e) => {
+              const parsed = parseInt(e.target.value, 10);
+              if (!Number.isNaN(parsed)) {
+                handleCustomDaysChange(parsed);
+              }
+            }}
             className="w-20 rounded-md border border-surface1 bg-surface0 px-3 py-1 text-text focus:border-blue focus:outline-none focus:ring-1 focus:ring-blue"
           />
         </div>

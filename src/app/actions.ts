@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db, CreateDoodleSchema, CastVoteSchema } from "@/db";
-import { doodles, votes, type DatePattern } from "@/db/schema";
+import { doodles, votes } from "@/db/schema";
 
 export type ActionState =
   | null

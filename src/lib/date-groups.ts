@@ -10,6 +10,10 @@ import type { DatePattern } from "@/db/schema";
 
 export type DateRange = { start: Date; end: Date };
 
+function assertNever(value: never): never {
+  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
+}
+
 export type DateGroup = {
   dates: string[];
   label: string;
@@ -135,6 +139,8 @@ export function getPatternDays(pattern: DatePattern): number {
       return pattern.days;
     case "flexible":
       return 1;
+    default:
+      return assertNever(pattern);
   }
 }
 
@@ -155,6 +161,8 @@ export function getGroupLabel(pattern: DatePattern, index: number): string {
       return `Period ${index}`;
     case "flexible":
       return `Day ${index}`;
+    default:
+      return assertNever(pattern);
   }
 }
 
