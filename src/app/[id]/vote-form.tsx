@@ -1,58 +1,122 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { useActionState, useState } from "react";
+import { useActionState, useState, useEffect } from "react";
 import { castVote, type ActionState } from "../actions";
+import { isGroupedDates, type DoodleDates, type DatePattern } from "@/db/types";
+import { getGroupLabel, formatGroupRange } from "@/lib/date-groups";
 
-type VoteFormProps = {
-  doodleId: string;
-  dates: string[];
+// Serializable subset of Doodle for client components
+type DoodleData = {
+  id: string;
+  dates: DoodleDates;
+  pattern?: DatePattern | null;
+  allowMaybe: boolean;
+  requireAllDates: boolean;
 };
 
-type ResponseValue = "yes" | "maybe" | "no";
+type VoteFormProps = {
+  doodle: DoodleData;
+  initialName?: string;
+  initialResponses?: Record<string, "yes" | "maybe" | "no" | undefined>;
+  participantId?: string;
+  onSuccess?: (participantId: string) => void;
+};
 
-export function VoteForm({ doodleId, dates }: VoteFormProps): ReactElement {
+type ResponseValue = "yes" | "maybe" | "no" | undefined;
+
+// Voting option: either a single date or a group
+type VotingOption = {
+  key: string; // Response key: date string for flat, group index for grouped
+  label: string; // Primary label
+  sublabel?: string; // Secondary label (date range for groups)
+};
+
+export function VoteForm({
+  doodle,
+  initialName = "",
+  initialResponses = {},
+  participantId,
+  onSuccess,
+}: VoteFormProps): ReactElement {
   const [state, formAction, isPending] = useActionState<ActionState, FormData>(
     castVote,
     null
   );
-  const [responses, setResponses] = useState<Record<string, ResponseValue>>({});
+  const [responses, setResponses] = useState<Record<string, ResponseValue>>(
+    initialResponses
+  );
+  const [name, setName] = useState(initialName);
 
-  function formatDate(dateStr: string): { weekday: string; day: string } {
-    const date = new Date(dateStr + "T00:00:00");
-    return {
-      weekday: date.toLocaleDateString("en-US", { weekday: "short" }),
-      day: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    };
-  }
+  // Notify parent on successful vote
+  useEffect(() => {
+    if (state?.status === "success" && state.participantId && onSuccess) {
+      onSuccess(state.participantId);
+    }
+  }, [state, onSuccess]);
 
-  function cycleResponse(date: string): void {
-    const current = responses[date];
-    const next: ResponseValue =
-      current === undefined
-        ? "yes"
-        : current === "yes"
-          ? "maybe"
-          : current === "maybe"
+  const { dates, pattern, allowMaybe, requireAllDates } = doodle;
+
+  // Determine if we're in grouped mode
+  const isGrouped = isGroupedDates(dates);
+
+  // Build voting options
+  const votingOptions: VotingOption[] = isGrouped
+    ? dates.map((group, index) => ({
+        key: String(index),
+        label: getGroupLabel(pattern ?? { type: "week" }, index + 1),
+        sublabel: formatGroupRange(group),
+      }))
+    : (dates as string[]).map((date) => {
+        const d = new Date(date + "T00:00:00");
+        return {
+          key: date,
+          label: d.toLocaleDateString("en-US", { weekday: "short" }),
+          sublabel: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        };
+      });
+
+  function cycleResponse(key: string): void {
+    const current = responses[key];
+    let next: ResponseValue;
+
+    if (allowMaybe) {
+      // 4-state cycle: undefined → yes → maybe → no → undefined
+      next =
+        current === undefined
+          ? "yes"
+          : current === "yes"
+            ? "maybe"
+            : current === "maybe"
+              ? "no"
+              : undefined;
+    } else {
+      // 3-state cycle: undefined → yes → no → undefined
+      next =
+        current === undefined
+          ? "yes"
+          : current === "yes"
             ? "no"
-            : "yes";
-    setResponses({ ...responses, [date]: next });
+            : undefined;
+    }
+
+    setResponses({ ...responses, [key]: next });
   }
 
-  function getButtonStyle(response: ResponseValue | undefined): string {
+  function getButtonStyle(response: ResponseValue): string {
     switch (response) {
       case "yes":
-        return "bg-green-500 text-white hover:bg-green-600";
+        return "bg-green text-crust hover:bg-teal";
       case "maybe":
-        return "bg-yellow-500 text-white hover:bg-yellow-600";
+        return "bg-yellow text-crust hover:bg-peach";
       case "no":
-        return "bg-red-500 text-white hover:bg-red-600";
+        return "bg-red text-crust hover:bg-maroon";
       default:
-        return "bg-gray-200 text-gray-600 hover:bg-gray-300";
+        return "bg-surface0 text-subtext0 hover:bg-surface1";
     }
   }
 
-  function getButtonLabel(response: ResponseValue | undefined): string {
+  function getButtonLabel(response: ResponseValue): string {
     switch (response) {
       case "yes":
         return "Yes";
@@ -65,17 +129,27 @@ export function VoteForm({ doodleId, dates }: VoteFormProps): ReactElement {
     }
   }
 
-  const allDatesAnswered = dates.every((date) => responses[date] !== undefined);
+  const answeredOptions = votingOptions.filter(
+    (opt) => responses[opt.key] !== undefined
+  );
+  const allOptionsAnswered = answeredOptions.length === votingOptions.length;
+  const canSubmit = requireAllDates
+    ? allOptionsAnswered
+    : answeredOptions.length > 0;
+  const isEditing = Boolean(participantId);
 
   return (
     <form action={formAction} className="space-y-4">
-      <input type="hidden" name="doodleId" value={doodleId} />
+      <input type="hidden" name="doodleId" value={doodle.id} />
       <input type="hidden" name="responses" value={JSON.stringify(responses)} />
+      {participantId && (
+        <input type="hidden" name="participantId" value={participantId} />
+      )}
 
       <div>
         <label
           htmlFor="participantName"
-          className="block text-sm font-medium text-gray-700"
+          className="block text-sm font-medium text-subtext1"
         >
           Your Name
         </label>
@@ -86,30 +160,40 @@ export function VoteForm({ doodleId, dates }: VoteFormProps): ReactElement {
           required
           maxLength={100}
           placeholder="John Doe"
-          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="mt-1 block w-full rounded-md border border-surface1 bg-surface0 px-3 py-2 text-text placeholder:text-overlay0 shadow-sm focus:border-blue focus:outline-none focus:ring-1 focus:ring-blue"
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-subtext1 mb-2">
           Your Availability
         </label>
-        <p className="text-xs text-gray-500 mb-3">
-          Click each date to cycle through: Yes → Maybe → No
+        <p className="text-xs text-overlay1 mb-3">
+          Click each {isGrouped ? "period" : "date"} to cycle through:{" "}
+          {allowMaybe ? "Not Set → Yes → Maybe → No" : "Not Set → Yes → No"}
         </p>
         <div className="flex flex-wrap gap-2">
-          {dates.map((date) => {
-            const formatted = formatDate(date);
-            const response = responses[date];
+          {votingOptions.map((option, index) => {
+            const response = responses[option.key];
             return (
               <button
-                key={date}
+                key={option.key}
                 type="button"
-                onClick={() => cycleResponse(date)}
-                className={`flex flex-col items-center rounded-lg px-4 py-2 text-sm transition-colors ${getButtonStyle(response)}`}
+                onClick={() => cycleResponse(option.key)}
+                className={`flex flex-col items-center rounded-lg px-4 py-2 text-sm transition-colors ${getButtonStyle(response)} ${
+                  isGrouped && response === undefined
+                    ? index % 2 === 0
+                      ? "ring-1 ring-blue/30"
+                      : "ring-1 ring-sapphire/30"
+                    : ""
+                }`}
               >
-                <span className="font-medium">{formatted.weekday}</span>
-                <span className="text-xs opacity-80">{formatted.day}</span>
+                <span className="font-medium">{option.label}</span>
+                {option.sublabel && (
+                  <span className="text-xs opacity-80">{option.sublabel}</span>
+                )}
                 <span className="mt-1 text-xs font-semibold">
                   {getButtonLabel(response)}
                 </span>
@@ -121,7 +205,7 @@ export function VoteForm({ doodleId, dates }: VoteFormProps): ReactElement {
 
       {state && (
         <p
-          className={`text-sm ${state.status === "success" ? "text-green-600" : "text-red-600"}`}
+          className={`text-sm ${state.status === "success" ? "text-green" : "text-red"}`}
         >
           {state.message}
         </p>
@@ -129,15 +213,21 @@ export function VoteForm({ doodleId, dates }: VoteFormProps): ReactElement {
 
       <button
         type="submit"
-        disabled={isPending || !allDatesAnswered}
-        className="w-full rounded-md bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+        disabled={isPending || !canSubmit || !name.trim()}
+        className="w-full rounded-md bg-blue px-4 py-2 text-crust font-medium hover:bg-sapphire disabled:bg-surface1 disabled:text-overlay0 disabled:cursor-not-allowed transition-colors"
       >
-        {isPending ? "Submitting..." : "Submit Vote"}
+        {isPending
+          ? "Submitting..."
+          : isEditing
+            ? "Update Vote"
+            : "Submit Vote"}
       </button>
 
-      {!allDatesAnswered && (
-        <p className="text-xs text-gray-500 text-center">
-          Please respond to all dates before submitting.
+      {!canSubmit && (
+        <p className="text-xs text-overlay1 text-center">
+          {requireAllDates
+            ? `Please respond to all ${isGrouped ? "periods" : "dates"} before submitting.`
+            : `Please respond to at least one ${isGrouped ? "period" : "date"} before submitting.`}
         </p>
       )}
     </form>
@@ -163,7 +253,7 @@ export function ShareButton(): ReactElement {
     <button
       type="button"
       onClick={handleCopy}
-      className="mt-4 inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
+      className="mt-4 inline-flex items-center gap-2 rounded-md bg-surface0 px-3 py-1.5 text-sm text-subtext1 hover:bg-surface1 transition-colors"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"

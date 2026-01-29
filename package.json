@@ -11,13 +11,17 @@
     "db:studio": "drizzle-kit studio"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
+    "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.1",
     "next": "16.1.6",
     "react": "19.2.3",
+    "react-day-picker": "^9.13.0",
     "react-dom": "19.2.3",
     "zod": "^4.3.6"
   },
