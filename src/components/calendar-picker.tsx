@@ -299,6 +299,7 @@ export function CalendarPicker({
             selected={range}
             onSelect={handleRangeSelect}
             numberOfMonths={2}
+            weekStartsOn={1}
             disabled={{ before: new Date() }}
             modifiers={isPatternMode ? modifiers : undefined}
             modifiersClassNames={modifiersClassNames}
@@ -310,6 +311,7 @@ export function CalendarPicker({
             selected={[...selectedDateSet].map((d) => new Date(d + "T00:00:00"))}
             onSelect={handleSingleSelect}
             numberOfMonths={2}
+            weekStartsOn={1}
             disabled={{ before: new Date() }}
             classNames={dayPickerClassNames}
           />
@@ -363,13 +365,7 @@ export function CalendarPicker({
           {remainingDays > 0 && (
             <p className="text-xs text-yellow">
               Note: {remainingDays} day{remainingDays > 1 ? "s" : ""} at the end
-              of your range don&apos;t form a complete{" "}
-              {pattern.type === "week"
-                ? "week"
-                : pattern.type === "two-weeks"
-                  ? "fortnight"
-                  : "period"}{" "}
-              and won&apos;t be included.
+              of your range don&apos;t form a complete period and won&apos;t be included.
             </p>
           )}
 

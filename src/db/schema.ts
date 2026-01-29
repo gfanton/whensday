@@ -1,19 +1,5 @@
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-
-// ---- Date Pattern Types
-
-export type DatePattern =
-  | { type: "weekend" }
-  | { type: "long-weekend"; days: 3 | 4 }
-  | { type: "week" }
-  | { type: "two-weeks" }
-  | { type: "custom"; days: number }
-  | { type: "flexible" };
-
-// Dates can be:
-// - string[] (flat) for flexible mode - each date is a voting option
-// - string[][] (grouped) for pattern mode - each group is a voting option
-export type DoodleDates = string[] | string[][];
+import type { DatePattern, DoodleDates } from "./types";
 
 export const doodles = sqliteTable("doodles", {
   id: text("id").primaryKey(),

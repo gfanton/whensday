@@ -48,11 +48,10 @@ describe("CreateDoodleSchema", () => {
     it("accepts all pattern types", () => {
       const patterns = [
         { type: "weekend" as const },
-        { type: "long-weekend" as const, days: 3 as const },
-        { type: "long-weekend" as const, days: 4 as const },
-        { type: "week" as const },
-        { type: "two-weeks" as const },
-        { type: "custom" as const, days: 5 },
+        { type: "weekday-range" as const, startDay: 5, endDay: 0 }, // Fri-Sun
+        { type: "weekday-range" as const, startDay: 5, endDay: 1 }, // Fri-Mon
+        { type: "weekday-range" as const, startDay: 1, endDay: 0 }, // Mon-Sun (week)
+        { type: "weekday-range" as const, startDay: 1, endDay: 5 }, // Mon-Fri
         { type: "flexible" as const },
       ];
 
@@ -176,30 +175,52 @@ describe("CreateDoodleSchema", () => {
       expect(result.success).toBe(false);
     });
 
-    it("rejects long-weekend with invalid days", () => {
-      const result = CreateDoodleSchema.safeParse({
-        title: "Test",
-        dates: ["2025-01-20"],
-        pattern: { type: "long-weekend", days: 5 },
-      });
-
-      expect(result.success).toBe(false);
-    });
-
-    it("rejects custom pattern with days out of range", () => {
+    it("rejects weekday-range with invalid startDay", () => {
       const tooSmall = CreateDoodleSchema.safeParse({
         title: "Test",
         dates: ["2025-01-20"],
-        pattern: { type: "custom", days: 0 },
+        pattern: { type: "weekday-range", startDay: -1, endDay: 0 },
       });
       expect(tooSmall.success).toBe(false);
 
       const tooLarge = CreateDoodleSchema.safeParse({
         title: "Test",
         dates: ["2025-01-20"],
-        pattern: { type: "custom", days: 32 },
+        pattern: { type: "weekday-range", startDay: 7, endDay: 0 },
       });
       expect(tooLarge.success).toBe(false);
+    });
+
+    it("rejects weekday-range with invalid endDay", () => {
+      const tooSmall = CreateDoodleSchema.safeParse({
+        title: "Test",
+        dates: ["2025-01-20"],
+        pattern: { type: "weekday-range", startDay: 5, endDay: -1 },
+      });
+      expect(tooSmall.success).toBe(false);
+
+      const tooLarge = CreateDoodleSchema.safeParse({
+        title: "Test",
+        dates: ["2025-01-20"],
+        pattern: { type: "weekday-range", startDay: 5, endDay: 7 },
+      });
+      expect(tooLarge.success).toBe(false);
+    });
+
+    it("rejects weekday-range without required fields", () => {
+      const noStartDay = CreateDoodleSchema.safeParse({
+        title: "Test",
+        dates: ["2025-01-20"],
+        pattern: { type: "weekday-range", endDay: 0 },
+      });
+      expect(noStartDay.success).toBe(false);
+
+      const noEndDay = CreateDoodleSchema.safeParse({
+        title: "Test",
+        dates: ["2025-01-20"],
+        pattern: { type: "weekday-range", startDay: 5 },
+      });
+      expect(noEndDay.success).toBe(false);
     });
 
     it("rejects empty group in grouped dates", () => {

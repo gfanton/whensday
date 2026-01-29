@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { z } from "zod";
 import * as schema from "./schema";
+import { PatternSchema } from "./types";
 
 // ---- Database Connection
 
@@ -22,16 +23,6 @@ const DatesSchema = z.union([
   z.array(DateStringSchema).min(1, "At least one date is required"),
   // Array of groups for pattern mode
   z.array(DateGroupSchema).min(1, "At least one date group is required"),
-]);
-
-// Pattern schema
-const PatternSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("weekend") }),
-  z.object({ type: z.literal("long-weekend"), days: z.union([z.literal(3), z.literal(4)]) }),
-  z.object({ type: z.literal("week") }),
-  z.object({ type: z.literal("two-weeks") }),
-  z.object({ type: z.literal("custom"), days: z.number().min(1).max(31) }),
-  z.object({ type: z.literal("flexible") }),
 ]);
 
 export const CreateDoodleSchema = z.object({

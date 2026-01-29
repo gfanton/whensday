@@ -5,8 +5,9 @@ import {
   isSaturday,
   nextSaturday,
   startOfDay,
+  getDay,
 } from "date-fns";
-import type { DatePattern } from "@/db/schema";
+import type { DatePattern } from "@/db/types";
 
 export type DateRange = { start: Date; end: Date };
 
@@ -20,6 +21,46 @@ export type DateGroup = {
   range: string; // e.g., "Jan 28 - Feb 3"
 };
 
+// ---- Constants
+
+export const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+// ---- Weekday Range Helpers
+
+/**
+ * Calculate the number of days in a weekday range, handling wrap-around.
+ * For example: Fri(5) to Mon(1) = 4 days (Fri, Sat, Sun, Mon)
+ */
+export function calculateWeekdaySpan(startDay: number, endDay: number): number {
+  if (endDay >= startDay) {
+    return endDay - startDay + 1;
+  }
+  // Wrap: Fri(5) to Mon(1) = (7 - 5) + 1 + 1 = 4 days
+  return 7 - startDay + endDay + 1;
+}
+
+/**
+ * Get label for a weekday range group.
+ * e.g., "Fri-Mon 1" or "Mon-Sun 2"
+ */
+export function getWeekdayRangeLabel(startDay: number, endDay: number, index: number): string {
+  const startName = WEEKDAY_NAMES[startDay];
+  const endName = WEEKDAY_NAMES[endDay];
+  return `${startName}-${endName} ${index}`;
+}
+
+/**
+ * Find the next occurrence of a specific weekday on or after a given date.
+ */
+function nextWeekday(date: Date, weekday: number): Date {
+  const currentDay = getDay(date);
+  if (currentDay === weekday) {
+    return date;
+  }
+  const daysUntil = (weekday - currentDay + 7) % 7;
+  return addDays(date, daysUntil);
+}
+
 // ---- Generate Date Groups
 
 /**
@@ -30,23 +71,28 @@ export function generateDateGroups(
   pattern: DatePattern,
   range: DateRange
 ): DateGroup[] {
-  if (pattern.type === "flexible") {
-    // Flexible mode: each day is its own group
-    const days = eachDayOfInterval({ start: range.start, end: range.end });
-    return days.map((day) => ({
-      dates: [format(day, "yyyy-MM-dd")],
-      label: format(day, "EEE, MMM d"),
-      range: format(day, "MMM d"),
-    }));
+  switch (pattern.type) {
+    case "flexible":
+      return generateFlexibleGroups(range);
+    case "weekend":
+      return generateWeekendGroups(range);
+    case "weekday-range":
+      return generateWeekdayRangeGroups(range, pattern.startDay, pattern.endDay);
+    default:
+      return assertNever(pattern);
   }
+}
 
-  if (pattern.type === "weekend") {
-    return generateWeekendGroups(range);
-  }
-
-  // For week, two-weeks, long-weekend, custom: generate N-day chunks
-  const chunkSize = getPatternDays(pattern);
-  return generateChunkedGroups(range, chunkSize, pattern);
+/**
+ * Generate flexible groups - each day is its own group.
+ */
+function generateFlexibleGroups(range: DateRange): DateGroup[] {
+  const days = eachDayOfInterval({ start: range.start, end: range.end });
+  return days.map((day) => ({
+    dates: [format(day, "yyyy-MM-dd")],
+    label: format(day, "EEE, MMM d"),
+    range: format(day, "MMM d"),
+  }));
 }
 
 /**
@@ -84,37 +130,42 @@ function generateWeekendGroups(range: DateRange): DateGroup[] {
 }
 
 /**
- * Generate N-day chunks within a range.
- * Excludes partial chunks at the end.
+ * Generate weekday range groups within a date range.
+ * Finds all weekly occurrences of the specified weekday range.
+ * For example: startDay=5 (Fri), endDay=1 (Mon) finds every Fri-Mon.
  */
-function generateChunkedGroups(
+function generateWeekdayRangeGroups(
   range: DateRange,
-  chunkSize: number,
-  pattern: DatePattern
+  startDay: number,
+  endDay: number
 ): DateGroup[] {
   const groups: DateGroup[] = [];
   let groupIndex = 1;
-  let current = startOfDay(range.start);
+
+  const span = calculateWeekdaySpan(startDay, endDay);
+
+  // Find first occurrence of startDay on or after range start
+  let current = startOfDay(nextWeekday(range.start, startDay));
 
   while (current <= range.end) {
-    const chunkEnd = addDays(current, chunkSize - 1);
+    const groupEnd = addDays(current, span - 1);
 
-    // Only include complete chunks
-    if (chunkEnd <= range.end) {
-      const dates = eachDayOfInterval({ start: current, end: chunkEnd }).map(
+    // Only include complete groups that fit in range
+    if (groupEnd <= range.end) {
+      const dates = eachDayOfInterval({ start: current, end: groupEnd }).map(
         (d) => format(d, "yyyy-MM-dd")
       );
 
       groups.push({
         dates,
-        label: getGroupLabel(pattern, groupIndex),
-        range: formatGroupRange([current, chunkEnd]),
+        label: getWeekdayRangeLabel(startDay, endDay, groupIndex),
+        range: formatGroupRange([current, groupEnd]),
       });
       groupIndex++;
     }
 
-    // Move to next chunk
-    current = addDays(current, chunkSize);
+    // Move to next week
+    current = addDays(current, 7);
   }
 
   return groups;
@@ -129,14 +180,8 @@ export function getPatternDays(pattern: DatePattern): number {
   switch (pattern.type) {
     case "weekend":
       return 2;
-    case "long-weekend":
-      return pattern.days;
-    case "week":
-      return 7;
-    case "two-weeks":
-      return 14;
-    case "custom":
-      return pattern.days;
+    case "weekday-range":
+      return calculateWeekdaySpan(pattern.startDay, pattern.endDay);
     case "flexible":
       return 1;
     default:
@@ -151,14 +196,8 @@ export function getGroupLabel(pattern: DatePattern, index: number): string {
   switch (pattern.type) {
     case "weekend":
       return `Weekend ${index}`;
-    case "long-weekend":
-      return `Long Weekend ${index}`;
-    case "week":
-      return `Week ${index}`;
-    case "two-weeks":
-      return `Fortnight ${index}`;
-    case "custom":
-      return `Period ${index}`;
+    case "weekday-range":
+      return getWeekdayRangeLabel(pattern.startDay, pattern.endDay, index);
     case "flexible":
       return `Day ${index}`;
     default:
@@ -212,25 +251,42 @@ export function countPossibleGroups(pattern: DatePattern, range: DateRange): num
     return count;
   }
 
-  const chunkSize = getPatternDays(pattern);
-  const totalDays = Math.floor(
-    (range.end.getTime() - range.start.getTime()) / (1000 * 60 * 60 * 24)
-  ) + 1;
-  return Math.floor(totalDays / chunkSize);
+  if (pattern.type === "weekday-range") {
+    // Count weekday range occurrences
+    const span = calculateWeekdaySpan(pattern.startDay, pattern.endDay);
+    let count = 0;
+    let current = startOfDay(nextWeekday(range.start, pattern.startDay));
+    while (addDays(current, span - 1) <= range.end) {
+      count++;
+      current = addDays(current, 7);
+    }
+    return count;
+  }
+
+  if (pattern.type === "flexible") {
+    const totalDays = Math.floor(
+      (range.end.getTime() - range.start.getTime()) / (1000 * 60 * 60 * 24)
+    ) + 1;
+    return totalDays;
+  }
+
+  return assertNever(pattern);
 }
 
 /**
  * Calculate remaining days that don't form a complete group.
+ * For weekday-range patterns, this is always 0 since we find weekly occurrences.
  */
 export function getRemainingDays(pattern: DatePattern, range: DateRange): number {
-  if (pattern.type === "weekend") {
-    // For weekends, remaining days don't really apply the same way
+  if (pattern.type === "weekend" || pattern.type === "weekday-range") {
+    // For weekend and weekday-range, remaining days don't apply the same way
     return 0;
   }
 
-  const chunkSize = getPatternDays(pattern);
-  const totalDays = Math.floor(
-    (range.end.getTime() - range.start.getTime()) / (1000 * 60 * 60 * 24)
-  ) + 1;
-  return totalDays % chunkSize;
+  if (pattern.type === "flexible") {
+    // Flexible uses all days, so no remaining
+    return 0;
+  }
+
+  return assertNever(pattern);
 }

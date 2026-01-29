@@ -1,13 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { z } from "zod";
 
-export type StoredIdentity = {
-  type: "new" | "existing";
-  participantId?: string;
-  name?: string;
-  timestamp: number;
-};
+// ---- Zod Schema (Single Source of Truth)
+
+const StoredIdentitySchema = z.object({
+  type: z.enum(["new", "existing"]),
+  participantId: z.string().optional(),
+  name: z.string().optional(),
+  timestamp: z.number(),
+});
+
+export type StoredIdentity = z.infer<typeof StoredIdentitySchema>;
 
 type UsePollIdentityReturn = {
   identity: StoredIdentity | null;
@@ -25,25 +30,25 @@ export function usePollIdentity(pollId: string): UsePollIdentityReturn {
   const [isLoading, setIsLoading] = useState(true);
 
   // Load identity from localStorage on mount
+  // This is a standard hydration pattern - we intentionally call setState once
+  // on mount to sync React state with localStorage. This is not a cascading
+  // render issue since it only runs once per pollId change.
   useEffect(() => {
+    let parsedIdentity: StoredIdentity | null = null;
+
     try {
       const stored = localStorage.getItem(getStorageKey(pollId));
-      if (stored) {
-        const parsed = JSON.parse(stored) as StoredIdentity;
-        // Validate the structure
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          (parsed.type === "new" || parsed.type === "existing") &&
-          typeof parsed.timestamp === "number"
-        ) {
-          setIdentityState(parsed);
+      if (stored !== null) {
+        const result = StoredIdentitySchema.safeParse(JSON.parse(stored));
+        if (result.success) {
+          parsedIdentity = result.data;
         }
       }
     } catch {
-      // Invalid data in localStorage, ignore
       console.error("Failed to parse stored identity");
     }
+
+    setIdentityState(parsedIdentity); // eslint-disable-line react-hooks/set-state-in-effect -- Hydration: sync with localStorage
     setIsLoading(false);
   }, [pollId]);
 

@@ -6,9 +6,12 @@ import {
   formatGroupRange,
   countPossibleGroups,
   getRemainingDays,
+  calculateWeekdaySpan,
+  getWeekdayRangeLabel,
+  WEEKDAY_NAMES,
   type DateRange,
 } from "./date-groups";
-import type { DatePattern } from "@/db/schema";
+import type { DatePattern } from "@/db/types";
 
 // ---- Helper Functions
 
@@ -18,6 +21,47 @@ function createRange(start: string, end: string): DateRange {
     end: new Date(end + "T00:00:00"),
   };
 }
+
+// ---- calculateWeekdaySpan Tests
+
+describe("calculateWeekdaySpan", () => {
+  it("calculates same-day span as 1", () => {
+    expect(calculateWeekdaySpan(1, 1)).toBe(1); // Mon-Mon
+    expect(calculateWeekdaySpan(5, 5)).toBe(1); // Fri-Fri
+  });
+
+  it("calculates normal range without wrap-around", () => {
+    expect(calculateWeekdaySpan(1, 5)).toBe(5); // Mon-Fri
+    expect(calculateWeekdaySpan(6, 0)).toBe(2); // Sat-Sun
+    expect(calculateWeekdaySpan(0, 6)).toBe(7); // Sun-Sat (full week)
+  });
+
+  it("calculates wrap-around range", () => {
+    expect(calculateWeekdaySpan(5, 0)).toBe(3); // Fri-Sun (Fri, Sat, Sun)
+    expect(calculateWeekdaySpan(5, 1)).toBe(4); // Fri-Mon (Fri, Sat, Sun, Mon)
+    expect(calculateWeekdaySpan(6, 1)).toBe(3); // Sat-Mon (Sat, Sun, Mon)
+    expect(calculateWeekdaySpan(4, 2)).toBe(6); // Thu-Tue
+  });
+});
+
+// ---- getWeekdayRangeLabel Tests
+
+describe("getWeekdayRangeLabel", () => {
+  it("returns correct label for weekday range", () => {
+    expect(getWeekdayRangeLabel(5, 0, 1)).toBe("Fri-Sun 1");
+    expect(getWeekdayRangeLabel(5, 1, 2)).toBe("Fri-Mon 2");
+    expect(getWeekdayRangeLabel(1, 0, 1)).toBe("Mon-Sun 1");
+    expect(getWeekdayRangeLabel(1, 5, 3)).toBe("Mon-Fri 3");
+  });
+});
+
+// ---- WEEKDAY_NAMES Tests
+
+describe("WEEKDAY_NAMES", () => {
+  it("has correct order", () => {
+    expect(WEEKDAY_NAMES).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+  });
+});
 
 // ---- generateDateGroups Tests
 
@@ -88,105 +132,131 @@ describe("generateDateGroups", () => {
     });
   });
 
-  describe("week pattern", () => {
-    it("returns 7-day chunks", () => {
-      const pattern: DatePattern = { type: "week" };
-      const range = createRange("2025-01-01", "2025-01-14");
-      const groups = generateDateGroups(pattern, range);
+  describe("weekday-range pattern", () => {
+    describe("Fri-Sun (3-day long weekend)", () => {
+      it("finds all Fri-Sun periods in range", () => {
+        // Jan 31, 2025 is a Friday
+        const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 0 };
+        const range = createRange("2025-01-29", "2025-02-28");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(2);
-      expect(groups[0]?.dates).toHaveLength(7);
-      expect(groups[0]?.dates[0]).toBe("2025-01-01");
-      expect(groups[0]?.dates[6]).toBe("2025-01-07");
-      expect(groups[1]?.dates[0]).toBe("2025-01-08");
-      expect(groups[1]?.dates[6]).toBe("2025-01-14");
+        // Should find Fri-Sun: Jan 31-Feb 2, Feb 7-9, Feb 14-16, Feb 21-23, Feb 28 incomplete
+        expect(groups).toHaveLength(4);
+        expect(groups[0]?.dates).toEqual(["2025-01-31", "2025-02-01", "2025-02-02"]);
+        expect(groups[0]?.label).toBe("Fri-Sun 1");
+        expect(groups[1]?.dates).toEqual(["2025-02-07", "2025-02-08", "2025-02-09"]);
+        expect(groups[2]?.dates).toEqual(["2025-02-14", "2025-02-15", "2025-02-16"]);
+        expect(groups[3]?.dates).toEqual(["2025-02-21", "2025-02-22", "2025-02-23"]);
+      });
+
+      it("skips to next Friday when range starts mid-week", () => {
+        // Jan 29, 2025 is a Wednesday
+        const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 0 };
+        const range = createRange("2025-01-29", "2025-02-02");
+        const groups = generateDateGroups(pattern, range);
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0]?.dates).toEqual(["2025-01-31", "2025-02-01", "2025-02-02"]);
+      });
     });
 
-    it("excludes incomplete week at end", () => {
-      const pattern: DatePattern = { type: "week" };
-      const range = createRange("2025-01-01", "2025-01-10");
-      const groups = generateDateGroups(pattern, range);
+    describe("Fri-Mon (4-day long weekend)", () => {
+      it("finds all Fri-Mon periods in range", () => {
+        const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 1 };
+        const range = createRange("2025-01-29", "2025-02-28");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(1);
-      expect(groups[0]?.dates).toHaveLength(7);
+        // Should find Fri-Mon: Jan 31-Feb 3, Feb 7-10, Feb 14-17, Feb 21-24
+        expect(groups).toHaveLength(4);
+        expect(groups[0]?.dates).toEqual(["2025-01-31", "2025-02-01", "2025-02-02", "2025-02-03"]);
+        expect(groups[0]?.label).toBe("Fri-Mon 1");
+        expect(groups[1]?.dates).toEqual(["2025-02-07", "2025-02-08", "2025-02-09", "2025-02-10"]);
+      });
+
+      it("excludes incomplete Fri-Mon at end of range", () => {
+        // Range ends on Sunday, so last Fri-Mon is incomplete
+        const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 1 };
+        const range = createRange("2025-01-31", "2025-02-09");
+        const groups = generateDateGroups(pattern, range);
+
+        // Only Jan 31-Feb 3 fits completely
+        expect(groups).toHaveLength(1);
+        expect(groups[0]?.dates).toEqual(["2025-01-31", "2025-02-01", "2025-02-02", "2025-02-03"]);
+      });
     });
 
-    it("handles single day range (no complete weeks)", () => {
-      const pattern: DatePattern = { type: "week" };
-      const range = createRange("2025-01-01", "2025-01-01");
-      const groups = generateDateGroups(pattern, range);
+    describe("Mon-Sun (full week)", () => {
+      it("finds all Mon-Sun periods in range", () => {
+        // Jan 27, 2025 is a Monday
+        const pattern: DatePattern = { type: "weekday-range", startDay: 1, endDay: 0 };
+        const range = createRange("2025-01-27", "2025-02-16");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(0);
-    });
-  });
+        // Should find Mon-Sun: Jan 27-Feb 2, Feb 3-9, Feb 10-16
+        expect(groups).toHaveLength(3);
+        expect(groups[0]?.dates).toHaveLength(7);
+        expect(groups[0]?.dates[0]).toBe("2025-01-27");
+        expect(groups[0]?.dates[6]).toBe("2025-02-02");
+        expect(groups[0]?.label).toBe("Mon-Sun 1");
+      });
 
-  describe("two-weeks pattern", () => {
-    it("returns 14-day chunks", () => {
-      const pattern: DatePattern = { type: "two-weeks" };
-      const range = createRange("2025-01-01", "2025-01-28");
-      const groups = generateDateGroups(pattern, range);
+      it("skips to next Monday when range starts mid-week", () => {
+        // Jan 29, 2025 is a Wednesday, next Monday is Feb 3
+        const pattern: DatePattern = { type: "weekday-range", startDay: 1, endDay: 0 };
+        const range = createRange("2025-01-29", "2025-02-09");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(2);
-      expect(groups[0]?.dates).toHaveLength(14);
-      expect(groups[0]?.label).toBe("Fortnight 1");
-      expect(groups[1]?.label).toBe("Fortnight 2");
-    });
-
-    it("handles single day range (no complete fortnights)", () => {
-      const pattern: DatePattern = { type: "two-weeks" };
-      const range = createRange("2025-01-01", "2025-01-01");
-      const groups = generateDateGroups(pattern, range);
-
-      expect(groups).toHaveLength(0);
-    });
-  });
-
-  describe("long-weekend pattern", () => {
-    it("returns 3-day chunks", () => {
-      const pattern: DatePattern = { type: "long-weekend", days: 3 };
-      const range = createRange("2025-01-01", "2025-01-09");
-      const groups = generateDateGroups(pattern, range);
-
-      expect(groups).toHaveLength(3);
-      expect(groups[0]?.dates).toHaveLength(3);
-      expect(groups[0]?.label).toBe("Long Weekend 1");
+        expect(groups).toHaveLength(1);
+        expect(groups[0]?.dates[0]).toBe("2025-02-03");
+        expect(groups[0]?.dates[6]).toBe("2025-02-09");
+      });
     });
 
-    it("returns 4-day chunks when configured", () => {
-      const pattern: DatePattern = { type: "long-weekend", days: 4 };
-      const range = createRange("2025-01-01", "2025-01-08");
-      const groups = generateDateGroups(pattern, range);
+    describe("Mon-Fri (work week)", () => {
+      it("finds all Mon-Fri periods in range", () => {
+        const pattern: DatePattern = { type: "weekday-range", startDay: 1, endDay: 5 };
+        const range = createRange("2025-01-27", "2025-02-14");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(2);
-      expect(groups[0]?.dates).toHaveLength(4);
+        // Should find Mon-Fri: Jan 27-31, Feb 3-7, Feb 10-14
+        expect(groups).toHaveLength(3);
+        expect(groups[0]?.dates).toHaveLength(5);
+        expect(groups[0]?.dates).toEqual(["2025-01-27", "2025-01-28", "2025-01-29", "2025-01-30", "2025-01-31"]);
+        expect(groups[0]?.label).toBe("Mon-Fri 1");
+      });
     });
 
-    it("handles single day range (no complete long weekends)", () => {
-      const pattern: DatePattern = { type: "long-weekend", days: 3 };
-      const range = createRange("2025-01-01", "2025-01-01");
-      const groups = generateDateGroups(pattern, range);
+    describe("edge cases", () => {
+      it("handles range too short for any complete group", () => {
+        const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 1 };
+        // Only 3 days, Fri-Mon needs 4
+        const range = createRange("2025-01-31", "2025-02-02");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(0);
-    });
-  });
+        expect(groups).toHaveLength(0);
+      });
 
-  describe("custom pattern", () => {
-    it("returns N-day chunks based on custom days", () => {
-      const pattern: DatePattern = { type: "custom", days: 5 };
-      const range = createRange("2025-01-01", "2025-01-15");
-      const groups = generateDateGroups(pattern, range);
+      it("handles range starting exactly on start day", () => {
+        // Jan 31 is a Friday
+        const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 0 };
+        const range = createRange("2025-01-31", "2025-02-02");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(3);
-      expect(groups[0]?.dates).toHaveLength(5);
-      expect(groups[0]?.label).toBe("Period 1");
-    });
+        expect(groups).toHaveLength(1);
+        expect(groups[0]?.dates).toEqual(["2025-01-31", "2025-02-01", "2025-02-02"]);
+      });
 
-    it("handles single day range (no complete periods)", () => {
-      const pattern: DatePattern = { type: "custom", days: 5 };
-      const range = createRange("2025-01-01", "2025-01-01");
-      const groups = generateDateGroups(pattern, range);
+      it("handles Sat-Tue wrap-around", () => {
+        const pattern: DatePattern = { type: "weekday-range", startDay: 6, endDay: 2 };
+        // Feb 1, 2025 is a Saturday
+        const range = createRange("2025-02-01", "2025-02-18");
+        const groups = generateDateGroups(pattern, range);
 
-      expect(groups).toHaveLength(0);
+        // Sat-Tue: Feb 1-4, Feb 8-11, Feb 15-18
+        expect(groups).toHaveLength(3);
+        expect(groups[0]?.dates).toEqual(["2025-02-01", "2025-02-02", "2025-02-03", "2025-02-04"]);
+        expect(groups[0]?.label).toBe("Sat-Tue 1");
+      });
     });
   });
 });
@@ -198,22 +268,11 @@ describe("getPatternDays", () => {
     expect(getPatternDays({ type: "weekend" })).toBe(2);
   });
 
-  it("returns days value for long-weekend", () => {
-    expect(getPatternDays({ type: "long-weekend", days: 3 })).toBe(3);
-    expect(getPatternDays({ type: "long-weekend", days: 4 })).toBe(4);
-  });
-
-  it("returns 7 for week", () => {
-    expect(getPatternDays({ type: "week" })).toBe(7);
-  });
-
-  it("returns 14 for two-weeks", () => {
-    expect(getPatternDays({ type: "two-weeks" })).toBe(14);
-  });
-
-  it("returns days value for custom", () => {
-    expect(getPatternDays({ type: "custom", days: 5 })).toBe(5);
-    expect(getPatternDays({ type: "custom", days: 10 })).toBe(10);
+  it("returns calculated span for weekday-range", () => {
+    expect(getPatternDays({ type: "weekday-range", startDay: 5, endDay: 0 })).toBe(3); // Fri-Sun
+    expect(getPatternDays({ type: "weekday-range", startDay: 5, endDay: 1 })).toBe(4); // Fri-Mon
+    expect(getPatternDays({ type: "weekday-range", startDay: 1, endDay: 0 })).toBe(7); // Mon-Sun
+    expect(getPatternDays({ type: "weekday-range", startDay: 1, endDay: 5 })).toBe(5); // Mon-Fri
   });
 
   it("returns 1 for flexible", () => {
@@ -229,24 +288,10 @@ describe("getGroupLabel", () => {
     expect(getGroupLabel({ type: "weekend" }, 5)).toBe("Weekend 5");
   });
 
-  it("returns 'Long Weekend N' for long-weekend pattern", () => {
-    expect(getGroupLabel({ type: "long-weekend", days: 3 }, 1)).toBe("Long Weekend 1");
-    expect(getGroupLabel({ type: "long-weekend", days: 4 }, 3)).toBe("Long Weekend 3");
-  });
-
-  it("returns 'Week N' for week pattern", () => {
-    expect(getGroupLabel({ type: "week" }, 1)).toBe("Week 1");
-    expect(getGroupLabel({ type: "week" }, 2)).toBe("Week 2");
-  });
-
-  it("returns 'Fortnight N' for two-weeks pattern", () => {
-    expect(getGroupLabel({ type: "two-weeks" }, 1)).toBe("Fortnight 1");
-    expect(getGroupLabel({ type: "two-weeks" }, 2)).toBe("Fortnight 2");
-  });
-
-  it("returns 'Period N' for custom pattern", () => {
-    expect(getGroupLabel({ type: "custom", days: 5 }, 1)).toBe("Period 1");
-    expect(getGroupLabel({ type: "custom", days: 10 }, 4)).toBe("Period 4");
+  it("returns weekday range label for weekday-range pattern", () => {
+    expect(getGroupLabel({ type: "weekday-range", startDay: 5, endDay: 0 }, 1)).toBe("Fri-Sun 1");
+    expect(getGroupLabel({ type: "weekday-range", startDay: 5, endDay: 1 }, 2)).toBe("Fri-Mon 2");
+    expect(getGroupLabel({ type: "weekday-range", startDay: 1, endDay: 0 }, 3)).toBe("Mon-Sun 3");
   });
 
   it("returns 'Day N' for flexible pattern", () => {
@@ -311,27 +356,24 @@ describe("countPossibleGroups", () => {
     expect(countPossibleGroups(pattern, range)).toBe(0);
   });
 
-  it("counts week pattern", () => {
-    const pattern: DatePattern = { type: "week" };
-    const range = createRange("2025-01-01", "2025-01-21");
-    expect(countPossibleGroups(pattern, range)).toBe(3);
+  it("counts weekday-range pattern (Fri-Sun)", () => {
+    const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 0 };
+    // Jan 29 (Wed) to Feb 28 - should find 4 complete Fri-Sun
+    const range = createRange("2025-01-29", "2025-02-28");
+    expect(countPossibleGroups(pattern, range)).toBe(4);
   });
 
-  it("counts two-weeks pattern", () => {
-    const pattern: DatePattern = { type: "two-weeks" };
-    const range = createRange("2025-01-01", "2025-01-28");
-    expect(countPossibleGroups(pattern, range)).toBe(2);
+  it("counts weekday-range pattern (Fri-Mon)", () => {
+    const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 1 };
+    // Jan 29 (Wed) to Feb 28 - should find 4 complete Fri-Mon
+    const range = createRange("2025-01-29", "2025-02-28");
+    expect(countPossibleGroups(pattern, range)).toBe(4);
   });
 
-  it("counts long-weekend pattern", () => {
-    const pattern: DatePattern = { type: "long-weekend", days: 3 };
-    const range = createRange("2025-01-01", "2025-01-10");
-    expect(countPossibleGroups(pattern, range)).toBe(3);
-  });
-
-  it("counts custom pattern", () => {
-    const pattern: DatePattern = { type: "custom", days: 5 };
-    const range = createRange("2025-01-01", "2025-01-15");
+  it("counts weekday-range pattern (Mon-Sun full week)", () => {
+    const pattern: DatePattern = { type: "weekday-range", startDay: 1, endDay: 0 };
+    // Jan 27 (Mon) to Feb 16 (Sun) - should find 3 complete weeks
+    const range = createRange("2025-01-27", "2025-02-16");
     expect(countPossibleGroups(pattern, range)).toBe(3);
   });
 });
@@ -345,45 +387,15 @@ describe("getRemainingDays", () => {
     expect(getRemainingDays(pattern, range)).toBe(0);
   });
 
-  it("calculates remaining days for flexible pattern", () => {
-    const pattern: DatePattern = { type: "flexible" };
-    const range = createRange("2025-01-01", "2025-01-10");
-    // 10 days total, 1 day per group = 0 remaining
+  it("returns 0 for weekday-range pattern", () => {
+    const pattern: DatePattern = { type: "weekday-range", startDay: 5, endDay: 0 };
+    const range = createRange("2025-01-01", "2025-01-15");
     expect(getRemainingDays(pattern, range)).toBe(0);
   });
 
-  it("calculates remaining days for week pattern", () => {
-    const pattern: DatePattern = { type: "week" };
+  it("returns 0 for flexible pattern", () => {
+    const pattern: DatePattern = { type: "flexible" };
     const range = createRange("2025-01-01", "2025-01-10");
-    // 10 days total, 7 per week = 3 remaining
-    expect(getRemainingDays(pattern, range)).toBe(3);
-  });
-
-  it("calculates remaining days for two-weeks pattern", () => {
-    const pattern: DatePattern = { type: "two-weeks" };
-    const range = createRange("2025-01-01", "2025-01-20");
-    // 20 days total, 14 per fortnight = 6 remaining
-    expect(getRemainingDays(pattern, range)).toBe(6);
-  });
-
-  it("calculates remaining days for long-weekend pattern", () => {
-    const pattern: DatePattern = { type: "long-weekend", days: 3 };
-    const range = createRange("2025-01-01", "2025-01-10");
-    // 10 days total, 3 per long weekend = 1 remaining
-    expect(getRemainingDays(pattern, range)).toBe(1);
-  });
-
-  it("calculates remaining days for custom pattern", () => {
-    const pattern: DatePattern = { type: "custom", days: 4 };
-    const range = createRange("2025-01-01", "2025-01-10");
-    // 10 days total, 4 per period = 2 remaining
-    expect(getRemainingDays(pattern, range)).toBe(2);
-  });
-
-  it("returns 0 when days divide evenly", () => {
-    const pattern: DatePattern = { type: "custom", days: 5 };
-    const range = createRange("2025-01-01", "2025-01-10");
-    // 10 days total, 5 per period = 0 remaining
     expect(getRemainingDays(pattern, range)).toBe(0);
   });
 });

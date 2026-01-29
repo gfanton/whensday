@@ -94,8 +94,8 @@ describe("CalendarPicker", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Week" }));
 
-      // Should be called with empty array and the new pattern
-      expect(onDatesChange).toHaveBeenCalledWith([], { type: "week" });
+      // Should be called with empty array and the new pattern (Mon-Sun weekday-range)
+      expect(onDatesChange).toHaveBeenCalledWith([], { type: "weekday-range", startDay: 1, endDay: 0 });
     });
 
     it("resets to flexible pattern when Flexible is clicked", async () => {
@@ -138,7 +138,7 @@ describe("CalendarPicker", () => {
       await userEvent.click(screen.getByRole("button", { name: "Weekend" }));
 
       expect(
-        screen.getByText(/Each weekend \(Sat-Sun\) within the range/)
+        screen.getByText(/Each weekend \(Sat-Sun\) becomes a voting option/)
       ).toBeInTheDocument();
     });
 
@@ -148,7 +148,7 @@ describe("CalendarPicker", () => {
       await userEvent.click(screen.getByRole("button", { name: "Week" }));
 
       expect(
-        screen.getByText(/Each complete week becomes a voting option/)
+        screen.getByText(/Each complete week \(Mon-Sun\) becomes a voting option/)
       ).toBeInTheDocument();
     });
 
@@ -156,7 +156,7 @@ describe("CalendarPicker", () => {
       render(<CalendarPicker {...defaultProps} />);
 
       expect(
-        screen.getByText(/Each day becomes a voting option/)
+        screen.getByText(/Each individual day becomes a voting option/)
       ).toBeInTheDocument();
     });
   });

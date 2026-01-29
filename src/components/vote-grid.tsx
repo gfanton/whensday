@@ -44,7 +44,7 @@ export function VoteGrid({
   const columns: ColumnData[] = isGrouped
     ? dates.map((group, index) => ({
         key: String(index),
-        header: getGroupLabel(pattern ?? { type: "week" }, index + 1),
+        header: getGroupLabel(pattern ?? { type: "weekday-range", startDay: 1, endDay: 0 }, index + 1),
         subheader: formatGroupRange(group),
       }))
     : (dates as string[]).map((date) => {

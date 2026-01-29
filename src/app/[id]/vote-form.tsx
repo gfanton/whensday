@@ -64,7 +64,7 @@ export function VoteForm({
   const votingOptions: VotingOption[] = isGrouped
     ? dates.map((group, index) => ({
         key: String(index),
-        label: getGroupLabel(pattern ?? { type: "week" }, index + 1),
+        label: getGroupLabel(pattern ?? { type: "weekday-range", startDay: 1, endDay: 0 }, index + 1),
         sublabel: formatGroupRange(group),
       }))
     : (dates as string[]).map((date) => {

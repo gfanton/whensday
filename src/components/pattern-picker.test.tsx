@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PatternPicker, type DatePattern } from "./pattern-picker";
 
@@ -10,13 +10,12 @@ describe("PatternPicker", () => {
   };
 
   describe("renders all pattern buttons", () => {
-    it("displays all six pattern options", () => {
+    it("displays all five pattern preset options", () => {
       render(<PatternPicker {...defaultProps} />);
 
       expect(screen.getByRole("button", { name: "Weekend" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Long Weekend" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Week" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Two Weeks" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Custom" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Flexible" })).toBeInTheDocument();
     });
@@ -32,40 +31,43 @@ describe("PatternPicker", () => {
       expect(onPatternChange).toHaveBeenCalledWith({ type: "weekend" });
     });
 
-    it("calls onPatternChange with long-weekend pattern", async () => {
+    it("calls onPatternChange with long-weekend pattern (Fri-Sun default)", async () => {
       const onPatternChange = vi.fn();
       render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
 
       await userEvent.click(screen.getByRole("button", { name: "Long Weekend" }));
 
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "long-weekend", days: 3 });
+      expect(onPatternChange).toHaveBeenCalledWith({
+        type: "weekday-range",
+        startDay: 5,
+        endDay: 0,
+      });
     });
 
-    it("calls onPatternChange with week pattern", async () => {
+    it("calls onPatternChange with week pattern (Mon-Sun)", async () => {
       const onPatternChange = vi.fn();
       render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
 
       await userEvent.click(screen.getByRole("button", { name: "Week" }));
 
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "week" });
+      expect(onPatternChange).toHaveBeenCalledWith({
+        type: "weekday-range",
+        startDay: 1,
+        endDay: 0,
+      });
     });
 
-    it("calls onPatternChange with two-weeks pattern", async () => {
-      const onPatternChange = vi.fn();
-      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
-
-      await userEvent.click(screen.getByRole("button", { name: "Two Weeks" }));
-
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "two-weeks" });
-    });
-
-    it("calls onPatternChange with custom pattern", async () => {
+    it("calls onPatternChange with custom pattern (default Mon-Fri)", async () => {
       const onPatternChange = vi.fn();
       render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
 
       await userEvent.click(screen.getByRole("button", { name: "Custom" }));
 
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "custom", days: 5 });
+      expect(onPatternChange).toHaveBeenCalledWith({
+        type: "weekday-range",
+        startDay: 1,
+        endDay: 5,
+      });
     });
 
     it("calls onPatternChange with flexible pattern", async () => {
@@ -79,115 +81,133 @@ describe("PatternPicker", () => {
   });
 
   describe("long-weekend duration options", () => {
-    it("shows duration options when long-weekend is selected", () => {
-      render(
-        <PatternPicker
-          pattern={{ type: "long-weekend", days: 3 }}
-          onPatternChange={vi.fn()}
-        />
-      );
+    it("shows duration options when long-weekend is selected", async () => {
+      const onPatternChange = vi.fn();
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Long Weekend" }));
 
       expect(screen.getByText("Duration:")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "3 days" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "4 days" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Fri-Sun" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Fri-Mon" })).toBeInTheDocument();
     });
 
-    it("hides duration options for other patterns", () => {
+    it("hides duration options for other presets", () => {
       render(<PatternPicker {...defaultProps} />);
 
       expect(screen.queryByText("Duration:")).not.toBeInTheDocument();
     });
 
-    it("calls onPatternChange when duration is changed", async () => {
+    it("calls onPatternChange when duration is changed to Fri-Mon", async () => {
       const onPatternChange = vi.fn();
-      render(
-        <PatternPicker
-          pattern={{ type: "long-weekend", days: 3 }}
-          onPatternChange={onPatternChange}
-        />
-      );
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
 
-      await userEvent.click(screen.getByRole("button", { name: "4 days" }));
+      // First select long weekend
+      await userEvent.click(screen.getByRole("button", { name: "Long Weekend" }));
+      onPatternChange.mockClear();
 
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "long-weekend", days: 4 });
+      // Then change duration to Fri-Mon
+      await userEvent.click(screen.getByRole("button", { name: "Fri-Mon" }));
+
+      expect(onPatternChange).toHaveBeenCalledWith({
+        type: "weekday-range",
+        startDay: 5,
+        endDay: 1,
+      });
     });
   });
 
-  describe("custom days input", () => {
-    it("shows number input when custom pattern is selected", () => {
-      render(
-        <PatternPicker
-          pattern={{ type: "custom", days: 5 }}
-          onPatternChange={vi.fn()}
-        />
-      );
+  describe("custom weekday calendar", () => {
+    it("shows mini week calendar when custom is selected", async () => {
+      const onPatternChange = vi.fn();
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
 
-      expect(screen.getByText("Number of days:")).toBeInTheDocument();
-      expect(screen.getByRole("spinbutton")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+
+      // Should show all weekday buttons
+      expect(screen.getByRole("button", { name: "Sun" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Mon" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Tue" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Wed" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Thu" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Fri" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Sat" })).toBeInTheDocument();
     });
 
-    it("hides number input for other patterns", () => {
+    it("hides mini week calendar for other presets", () => {
       render(<PatternPicker {...defaultProps} />);
 
-      expect(screen.queryByText("Number of days:")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Sun" })).not.toBeInTheDocument();
     });
 
-    it("calls onPatternChange when days input is changed", () => {
+    it("allows selecting custom weekday range", async () => {
       const onPatternChange = vi.fn();
-      render(
-        <PatternPicker
-          pattern={{ type: "custom", days: 5 }}
-          onPatternChange={onPatternChange}
-        />
-      );
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
 
-      const input = screen.getByRole("spinbutton");
-      fireEvent.change(input, { target: { value: "10" } });
-
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "custom", days: 10 });
-    });
-
-    it("clamps custom days to valid range", () => {
-      const onPatternChange = vi.fn();
-      render(
-        <PatternPicker
-          pattern={{ type: "custom", days: 5 }}
-          onPatternChange={onPatternChange}
-        />
-      );
-
-      const input = screen.getByRole("spinbutton");
-
-      // Test minimum clamping
-      fireEvent.change(input, { target: { value: "0" } });
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "custom", days: 1 });
-
+      // Select custom preset
+      await userEvent.click(screen.getByRole("button", { name: "Custom" }));
       onPatternChange.mockClear();
 
-      // Test maximum clamping
-      fireEvent.change(input, { target: { value: "50" } });
-      expect(onPatternChange).toHaveBeenCalledWith({ type: "custom", days: 31 });
-    });
+      // Select Wed as start day
+      await userEvent.click(screen.getByRole("button", { name: "Wed" }));
 
-    it("ignores NaN input values", () => {
-      const onPatternChange = vi.fn();
-      render(
-        <PatternPicker
-          pattern={{ type: "custom", days: 5 }}
-          onPatternChange={onPatternChange}
-        />
-      );
+      // Select Sat as end day
+      await userEvent.click(screen.getByRole("button", { name: "Sat" }));
 
-      const input = screen.getByRole("spinbutton");
-      fireEvent.change(input, { target: { value: "" } });
-
-      // Should not call onPatternChange with NaN
-      expect(onPatternChange).not.toHaveBeenCalled();
+      expect(onPatternChange).toHaveBeenCalledWith({
+        type: "weekday-range",
+        startDay: 3, // Wed
+        endDay: 6, // Sat
+      });
     });
   });
 
   describe("help text", () => {
-    it("shows appropriate help text for weekend pattern", () => {
+    it("shows appropriate help text for weekend preset", async () => {
+      const onPatternChange = vi.fn();
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Weekend" }));
+
+      expect(screen.getByText(/Each weekend \(Sat-Sun\) becomes a voting option/)).toBeInTheDocument();
+    });
+
+    it("shows appropriate help text for flexible preset", () => {
+      render(<PatternPicker {...defaultProps} />);
+
+      expect(screen.getByText(/Each individual day becomes a voting option/)).toBeInTheDocument();
+    });
+
+    it("shows appropriate help text for week preset", async () => {
+      const onPatternChange = vi.fn();
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Week" }));
+
+      expect(screen.getByText(/Each complete week \(Mon-Sun\) becomes a voting option/)).toBeInTheDocument();
+    });
+
+    it("shows appropriate help text for long weekend preset", async () => {
+      const onPatternChange = vi.fn();
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Long Weekend" }));
+
+      expect(screen.getByText(/Each Fri-Sun period becomes a voting option/)).toBeInTheDocument();
+    });
+
+    it("shows appropriate help text for custom preset", async () => {
+      const onPatternChange = vi.fn();
+      render(<PatternPicker {...defaultProps} onPatternChange={onPatternChange} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+
+      expect(screen.getByText(/Click two weekdays above to define your pattern/)).toBeInTheDocument();
+    });
+  });
+
+  describe("initial state from pattern prop", () => {
+    it("initializes with weekend preset when pattern is weekend", () => {
       render(
         <PatternPicker
           pattern={{ type: "weekend" }}
@@ -195,52 +215,60 @@ describe("PatternPicker", () => {
         />
       );
 
-      expect(screen.getByText(/Each weekend \(Sat-Sun\) within the range/)).toBeInTheDocument();
+      const weekendBtn = screen.getByRole("button", { name: "Weekend" });
+      expect(weekendBtn.className).toContain("bg-blue");
     });
 
-    it("shows appropriate help text for flexible pattern", () => {
-      render(<PatternPicker {...defaultProps} />);
-
-      expect(screen.getByText(/Each day becomes a voting option/)).toBeInTheDocument();
-    });
-
-    it("shows appropriate help text for week pattern", () => {
+    it("initializes with long-weekend preset for Fri-Sun pattern", () => {
       render(
         <PatternPicker
-          pattern={{ type: "week" }}
+          pattern={{ type: "weekday-range", startDay: 5, endDay: 0 }}
           onPatternChange={vi.fn()}
         />
       );
 
-      expect(screen.getByText(/Each complete week becomes a voting option/)).toBeInTheDocument();
+      const longWeekendBtn = screen.getByRole("button", { name: "Long Weekend" });
+      expect(longWeekendBtn.className).toContain("bg-blue");
     });
-  });
 
-  describe("initial state", () => {
-    it("initializes custom days from pattern prop", () => {
+    it("initializes with long-weekend preset for Fri-Mon pattern", () => {
       render(
         <PatternPicker
-          pattern={{ type: "custom", days: 10 }}
+          pattern={{ type: "weekday-range", startDay: 5, endDay: 1 }}
           onPatternChange={vi.fn()}
         />
       );
 
-      const input = screen.getByRole("spinbutton");
-      expect(input).toHaveValue(10);
+      const longWeekendBtn = screen.getByRole("button", { name: "Long Weekend" });
+      expect(longWeekendBtn.className).toContain("bg-blue");
+
+      // Duration selector should show Fri-Mon active
+      const friMonBtn = screen.getByRole("button", { name: "Fri-Mon" });
+      expect(friMonBtn.className).toContain("bg-blue");
     });
 
-    it("initializes long-weekend days from pattern prop", () => {
-      const onPatternChange = vi.fn();
+    it("initializes with week preset for Mon-Sun pattern", () => {
       render(
         <PatternPicker
-          pattern={{ type: "long-weekend", days: 4 }}
-          onPatternChange={onPatternChange}
+          pattern={{ type: "weekday-range", startDay: 1, endDay: 0 }}
+          onPatternChange={vi.fn()}
         />
       );
 
-      // The 4 days button should have the active class (bg-blue)
-      const button4Days = screen.getByRole("button", { name: "4 days" });
-      expect(button4Days.className).toContain("bg-blue");
+      const weekBtn = screen.getByRole("button", { name: "Week" });
+      expect(weekBtn.className).toContain("bg-blue");
+    });
+
+    it("initializes with custom preset for non-standard weekday-range", () => {
+      render(
+        <PatternPicker
+          pattern={{ type: "weekday-range", startDay: 2, endDay: 4 }}
+          onPatternChange={vi.fn()}
+        />
+      );
+
+      const customBtn = screen.getByRole("button", { name: "Custom" });
+      expect(customBtn.className).toContain("bg-blue");
     });
   });
 });
