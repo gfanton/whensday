@@ -46,5 +46,6 @@ TODO_PROJECT.md
 
 # devenv
 .devenv/
+.devenv.flake.nix
 devenv.lock
 .direnv/
