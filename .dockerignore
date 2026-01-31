@@ -1,0 +1,65 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+.next
+out
+dist
+build
+
+# Development
+.git
+.gitignore
+*.md
+!README.md
+LICENSE
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Data (SQLite database)
+data/
+*.db
+*.db-journal
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+vitest.config.ts
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Docker
+Dockerfile*
+docker-compose*
+.docker
+
+# CI/CD
+.github
+
+# Nix
+flake.nix
+flake.lock
+.envrc
+.direnv
