@@ -3,6 +3,7 @@
 import type { ReactElement } from "react";
 import { useState, useCallback } from "react";
 import { VoteGrid } from "@/components/vote-grid";
+import { VoteCalendar } from "@/components/vote-calendar";
 import { VoteForm } from "./vote-form";
 import { IdentitySelector } from "@/components/identity-selector";
 import { usePollIdentity, type StoredIdentity } from "@/hooks/use-poll-identity";
@@ -160,6 +161,15 @@ export function VoteSection({ doodle, votes }: VoteSectionProps): ReactElement {
             onSuccess={handleVoteSuccess}
           />
         )}
+      </section>
+
+      <section className="rounded-lg border border-surface1 bg-mantle p-6">
+        <VoteCalendar
+          dates={doodle.dates}
+          pattern={doodle.pattern}
+          votes={votes}
+          currentUserResponses={currentUserVote?.responses}
+        />
       </section>
     </div>
   );

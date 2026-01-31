@@ -73,3 +73,36 @@ body {
   background: var(--ctp-base);
   color: var(--ctp-text);
 }
+
+/* Full-width calendar overrides for vote-calendar */
+.vote-calendar .rdp-root {
+  --rdp-day-width: auto;
+  --rdp-day-height: auto;
+  width: 100%;
+}
+
+.vote-calendar .rdp-months {
+  max-width: 100%;
+  width: 100%;
+}
+
+.vote-calendar .rdp-month {
+  width: 100%;
+}
+
+.vote-calendar .rdp-month_grid {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.vote-calendar .rdp-weekdays,
+.vote-calendar .rdp-week {
+  display: flex;
+  width: 100%;
+}
+
+.vote-calendar .rdp-weekday,
+.vote-calendar .rdp-day {
+  flex: 1;
+}
+

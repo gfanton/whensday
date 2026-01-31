@@ -22,7 +22,7 @@ type UsePollIdentityReturn = {
 };
 
 function getStorageKey(pollId: string): string {
-  return `daadle:poll:${pollId}:identity`;
+  return `whensday:poll:${pollId}:identity`;
 }
 
 export function usePollIdentity(pollId: string): UsePollIdentityReturn {

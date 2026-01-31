@@ -46,7 +46,7 @@ export default function Home(): ReactElement {
   return (
     <div className="min-h-screen bg-base">
       <main className="mx-auto max-w-2xl px-4 py-12">
-        <h1 className="mb-2 text-3xl font-bold text-text">Daadle</h1>
+        <h1 className="mb-2 text-3xl font-bold text-text">Whensday</h1>
         <p className="mb-8 text-subtext0">
           Create a poll to find the best date for your group.
         </p>

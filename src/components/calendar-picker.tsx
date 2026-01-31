@@ -26,6 +26,7 @@ type CalendarModifiers = {
   evenGroup?: Date[];
   oddGroup?: Date[];
   excludedGroup?: Date[];
+  rangeNonGroup?: Date[];
   today?: (date: Date) => boolean;
 };
 
@@ -171,30 +172,32 @@ export function CalendarPicker({
 
   // ---- Calendar Styling
 
-  const dayPickerClassNames = {
+  const dayPickerClassNames = useMemo(() => ({
     root: "rdp-root",
-    months: "flex flex-col sm:flex-row gap-4",
+    months: "flex flex-col sm:flex-row gap-4 px-10",
     month: "space-y-4",
     month_caption: "flex justify-center items-center h-10",
     caption_label: "text-sm font-medium text-text",
     nav: "flex items-center gap-1",
     button_previous:
-      "absolute left-1 p-2 rounded-md hover:bg-surface0 text-subtext0",
+      "absolute left-0 p-2 rounded-md hover:bg-surface1 transition-colors",
     button_next:
-      "absolute right-1 p-2 rounded-md hover:bg-surface0 text-subtext0",
+      "absolute right-0 p-2 rounded-md hover:bg-surface1 transition-colors",
+    chevron: "fill-lavender",
     weekdays: "flex",
     weekday: "w-9 text-center text-xs font-medium text-overlay1 py-2",
     week: "flex",
     day: "w-9 h-9 text-center text-sm p-0",
     day_button:
       "w-full h-full rounded-md text-text font-medium hover:bg-surface0 focus:outline-none focus:ring-2 focus:ring-blue disabled:text-surface2 disabled:font-normal disabled:hover:bg-transparent",
-    selected: "bg-blue text-crust hover:bg-sapphire",
-    range_start: "rounded-l-md bg-blue text-crust",
-    range_end: "rounded-r-md bg-blue text-crust",
-    range_middle: "bg-surface1 text-text rounded-none",
-    today: "ring-2 ring-peach ring-inset",
-    disabled: "!text-surface2 !font-normal",
-  };
+    selected: "bg-blue [&>button]:text-crust hover:bg-sapphire",
+    range_start: "rounded-l-md bg-blue [&>button]:text-crust",
+    range_end: "rounded-r-md bg-blue [&>button]:text-crust",
+    // In pattern mode, clear range_middle so group colors take precedence
+    range_middle: isPatternMode ? "" : "bg-surface1 rounded-none",
+    today: "[&>button]:text-peach [&>button]:font-bold",
+    disabled: "[&>button]:text-surface2 [&>button]:font-normal",
+  }), [isPatternMode]);
 
   // Custom day content for pattern mode (alternating group colors)
   const modifiers = useMemo((): CalendarModifiers => {
@@ -205,6 +208,15 @@ export function CalendarPicker({
     const evenGroup: Date[] = [];
     const oddGroup: Date[] = [];
     const excludedDates: Date[] = [];
+    const rangeNonGroup: Date[] = [];
+
+    // Collect all dates that are part of voting groups
+    const allGroupDateSet = new Set<string>();
+    for (const group of dateGroups) {
+      for (const d of group.dates) {
+        allGroupDateSet.add(d);
+      }
+    }
 
     for (let i = 0; i < dateGroups.length; i++) {
       const group = dateGroups[i];
@@ -220,23 +232,36 @@ export function CalendarPicker({
       }
     }
 
+    // Calculate days in range but NOT in any voting group
+    if (range?.from && range?.to) {
+      const allRangeDates = eachDayOfInterval({ start: range.from, end: range.to });
+      for (const d of allRangeDates) {
+        const dateStr = format(d, "yyyy-MM-dd");
+        if (!allGroupDateSet.has(dateStr)) {
+          rangeNonGroup.push(d);
+        }
+      }
+    }
+
     return {
       evenGroup,
       oddGroup,
       excludedGroup: excludedDates,
+      rangeNonGroup,
       today: (date: Date) => isToday(date),
     };
-  }, [isPatternMode, dateGroups, excludedGroups]);
+  }, [isPatternMode, dateGroups, excludedGroups, range]);
 
   const modifiersClassNames = useMemo((): Record<string, string> | undefined => {
     if (!isPatternMode) {
       return undefined;
     }
     return {
-      evenGroup: "bg-blue text-crust hover:bg-blue/80",
-      oddGroup: "bg-sapphire text-crust hover:bg-sapphire/80",
-      excludedGroup: "bg-surface1 text-overlay0 opacity-50",
-      today: "ring-2 ring-peach ring-inset",
+      evenGroup: "bg-blue [&>button]:text-crust hover:bg-blue/80",
+      oddGroup: "bg-sapphire [&>button]:text-crust hover:bg-sapphire/80",
+      excludedGroup: "bg-surface1 [&>button]:text-overlay0 opacity-50",
+      rangeNonGroup: "bg-surface0/50 [&>button]:text-overlay1 rounded-none",
+      today: "[&>button]:text-peach [&>button]:font-bold",
     };
   }, [isPatternMode]);
 

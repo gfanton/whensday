@@ -6,7 +6,7 @@ import { PatternSchema } from "./types";
 
 // ---- Database Connection
 
-const sqlite = new Database("./data/daadle.db");
+const sqlite = new Database("./data/whensday.db");
 export const db = drizzle(sqlite, { schema });
 
 // ---- Zod Schemas
