@@ -7,6 +7,32 @@ import { PatternSchema } from "./types";
 // ---- Database Connection
 
 const sqlite = new Database("./data/whensday.db");
+
+// Auto-create tables if they don't exist
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS doodles (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    dates TEXT NOT NULL,
+    pattern TEXT,
+    created_at INTEGER NOT NULL,
+    require_all_dates INTEGER DEFAULT 0,
+    allow_maybe INTEGER DEFAULT 1,
+    hide_participants INTEGER DEFAULT 0,
+    hide_scores INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS votes (
+    id TEXT PRIMARY KEY,
+    doodle_id TEXT NOT NULL REFERENCES doodles(id) ON DELETE CASCADE,
+    participant_name TEXT NOT NULL,
+    responses TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER
+  );
+`);
+
 export const db = drizzle(sqlite, { schema });
 
 // ---- Zod Schemas
