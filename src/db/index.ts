@@ -20,7 +20,8 @@ sqlite.exec(`
     require_all_dates INTEGER DEFAULT 0,
     allow_maybe INTEGER DEFAULT 1,
     hide_participants INTEGER DEFAULT 0,
-    hide_scores INTEGER DEFAULT 0
+    hide_scores INTEGER DEFAULT 0,
+    owner_key_hash TEXT
   );
 
   CREATE TABLE IF NOT EXISTS votes (
@@ -32,6 +33,21 @@ sqlite.exec(`
     updated_at INTEGER
   );
 `);
+
+// Safe migration: add owner_key_hash column if it doesn't exist
+const PragmaColumnSchema = z.object({ name: z.string() });
+const columnsRaw = sqlite.prepare("PRAGMA table_info(doodles)").all();
+const columns: { name: string }[] = [];
+for (const col of columnsRaw) {
+  const result = PragmaColumnSchema.safeParse(col);
+  if (result.success) {
+    columns.push(result.data);
+  }
+}
+const hasOwnerKeyHash = columns.some((col) => col.name === "owner_key_hash");
+if (!hasOwnerKeyHash) {
+  sqlite.exec("ALTER TABLE doodles ADD COLUMN owner_key_hash TEXT");
+}
 
 export const db = drizzle(sqlite, { schema });
 
@@ -61,6 +77,8 @@ export const CreateDoodleSchema = z.object({
   allowMaybe: z.boolean().default(true),
   hideParticipants: z.boolean().default(false),
   hideScores: z.boolean().default(false),
+  // Owner key hash for deletion authorization (64 char hex SHA-256)
+  ownerKeyHash: z.string().length(64).optional(),
 });
 
 // Vote responses: key can be either date string (flexible) or group index (pattern)
@@ -74,12 +92,19 @@ export const CastVoteSchema = z.object({
   ),
 });
 
+// Delete doodle validation
+export const DeleteDoodleSchema = z.object({
+  doodleId: z.string().uuid("Invalid poll ID"),
+  ownerKey: z.string().uuid("Invalid owner key"),
+});
+
 // ---- Types
 
 export type Doodle = typeof schema.doodles.$inferSelect;
 export type Vote = typeof schema.votes.$inferSelect;
 export type CreateDoodleInput = z.infer<typeof CreateDoodleSchema>;
 export type CastVoteInput = z.infer<typeof CastVoteSchema>;
+export type DeleteDoodleInput = z.infer<typeof DeleteDoodleSchema>;
 
 // Re-export client-safe types and helpers
 export { isGroupedDates } from "./types";

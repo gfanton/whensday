@@ -1,17 +1,27 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { eq, count } from "drizzle-orm";
-import { db, CreateDoodleSchema, CastVoteSchema } from "@/db";
+import { db, CreateDoodleSchema, CastVoteSchema, DeleteDoodleSchema } from "@/db";
 import { doodles, votes } from "@/db/schema";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { verifyOwnerKey } from "@/lib/crypto";
 
 export type ActionState =
   | null
   | { status: "error"; message: string }
   | { status: "success"; message: string; participantId?: string };
+
+export type CreateDoodleState =
+  | null
+  | { status: "error"; message: string }
+  | { status: "success"; pollId: string };
+
+export type DeleteDoodleState =
+  | null
+  | { status: "error"; message: string }
+  | { status: "success"; message: string };
 
 async function getClientIp(): Promise<string> {
   const headersList = await headers();
@@ -31,9 +41,9 @@ async function getClientIp(): Promise<string> {
 }
 
 export async function createDoodle(
-  prevState: ActionState,
+  prevState: CreateDoodleState,
   formData: FormData
-): Promise<ActionState> {
+): Promise<CreateDoodleState> {
   // Rate limit: 10 polls per hour per IP
   const ip = await getClientIp();
   const { allowed, resetInSeconds } = checkRateLimit(ip, 10, 60 * 60 * 1000);
@@ -77,6 +87,13 @@ export async function createDoodle(
     }
   }
 
+  // Handle ownerKeyHash
+  const ownerKeyHashRaw = formData.get("ownerKeyHash");
+  const ownerKeyHash =
+    typeof ownerKeyHashRaw === "string" && ownerKeyHashRaw.length === 64
+      ? ownerKeyHashRaw
+      : undefined;
+
   const result = CreateDoodleSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description") || undefined,
@@ -86,6 +103,7 @@ export async function createDoodle(
     allowMaybe: formData.get("allowMaybe") !== "false", // Default true
     hideParticipants: formData.get("hideParticipants") === "true",
     hideScores: formData.get("hideScores") === "true",
+    ownerKeyHash,
   });
 
   if (!result.success) {
@@ -107,9 +125,10 @@ export async function createDoodle(
     allowMaybe: result.data.allowMaybe,
     hideParticipants: result.data.hideParticipants,
     hideScores: result.data.hideScores,
+    ownerKeyHash: result.data.ownerKeyHash ?? null,
   });
 
-  redirect(`/${id}`);
+  return { status: "success", pollId: id };
 }
 
 export async function castVote(
@@ -203,4 +222,50 @@ export async function castVote(
 
   revalidatePath(`/${result.data.doodleId}`);
   return { status: "success", message: "Vote submitted!", participantId: newId };
+}
+
+export async function deleteDoodle(
+  prevState: DeleteDoodleState,
+  formData: FormData
+): Promise<DeleteDoodleState> {
+  const parseResult = DeleteDoodleSchema.safeParse({
+    doodleId: formData.get("doodleId"),
+    ownerKey: formData.get("ownerKey"),
+  });
+
+  if (!parseResult.success) {
+    return {
+      status: "error",
+      message: parseResult.error.issues[0]?.message ?? "Invalid request",
+    };
+  }
+
+  const { doodleId, ownerKey } = parseResult.data;
+
+  // Find the doodle
+  const doodle = await db.query.doodles.findFirst({
+    where: eq(doodles.id, doodleId),
+  });
+
+  if (doodle === undefined) {
+    return { status: "error", message: "Poll not found" };
+  }
+
+  // Check if this poll has an owner key hash
+  if (doodle.ownerKeyHash === null) {
+    return {
+      status: "error",
+      message: "This poll cannot be deleted (created before ownership feature)",
+    };
+  }
+
+  // Verify ownership using timing-safe comparison
+  if (!verifyOwnerKey(ownerKey, doodle.ownerKeyHash)) {
+    return { status: "error", message: "Unauthorized" };
+  }
+
+  // Delete the poll (votes cascade via FK)
+  await db.delete(doodles).where(eq(doodles.id, doodleId));
+
+  return { status: "success", message: "Poll deleted" };
 }

@@ -13,6 +13,8 @@ export const doodles = sqliteTable("doodles", {
   allowMaybe: integer("allow_maybe", { mode: "boolean" }).default(true),
   hideParticipants: integer("hide_participants", { mode: "boolean" }).default(false),
   hideScores: integer("hide_scores", { mode: "boolean" }).default(false),
+  // Owner key hash for deletion authorization
+  ownerKeyHash: text("owner_key_hash"),
 });
 
 export const votes = sqliteTable("votes", {

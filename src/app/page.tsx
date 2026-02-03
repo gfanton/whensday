@@ -1,10 +1,17 @@
 "use client";
 
-import type { ReactElement } from "react";
-import { useActionState, useState } from "react";
-import { createDoodle, type ActionState } from "./actions";
+import type { ReactElement, FormEvent } from "react";
+import { useState, useActionState, startTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  createDoodle,
+  deleteDoodle,
+  type DeleteDoodleState,
+} from "./actions";
 import { CalendarPicker } from "@/components/calendar-picker";
 import type { DatePattern } from "@/db/types";
+import { useCreatedPolls, type CreatedPoll } from "@/hooks/use-created-polls";
+import { hashOwnerKey } from "@/lib/crypto";
 
 type PollSettings = {
   requireAllDates: boolean;
@@ -14,10 +21,15 @@ type PollSettings = {
 };
 
 export default function Home(): ReactElement {
-  const [state, formAction, isPending] = useActionState<ActionState, FormData>(
-    createDoodle,
+  const router = useRouter();
+  const { polls, isLoading: pollsLoading, addPoll, removePoll, getOwnerKey } = useCreatedPolls();
+
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [deleteState, deleteAction, isDeleting] = useActionState<DeleteDoodleState, FormData>(
+    deleteDoodle,
     null
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [dates, setDates] = useState<string[] | string[][]>([]);
   const [pattern, setPattern] = useState<DatePattern>({ type: "flexible" });
   const [settings, setSettings] = useState<PollSettings>({
@@ -40,8 +52,77 @@ export default function Home(): ReactElement {
   }
 
   // Check if we have any dates selected
-  const hasDateSelection =
-    dates.length > 0 && (Array.isArray(dates[0]) ? dates[0].length > 0 : true);
+  const hasDateSelection = ((): boolean => {
+    if (dates.length === 0) return false;
+    const first = dates[0];
+    if (first === undefined) return false;
+    return Array.isArray(first) ? first.length > 0 : true;
+  })();
+
+  const isPending = isSubmitting;
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setCreateError(null);
+
+    try {
+      const form = e.currentTarget;
+      const formData = new FormData(form);
+
+      // 1. Generate owner key and hash
+      const ownerKey = crypto.randomUUID();
+      const ownerKeyHash = await hashOwnerKey(ownerKey);
+      formData.append("ownerKeyHash", ownerKeyHash);
+
+      // 2. Submit action (call server action directly)
+      const result = await createDoodle(null, formData);
+
+      // 3. Handle result
+      if (result === null) {
+        setCreateError("Unexpected error");
+        return;
+      }
+      if (result.status === "error") {
+        setCreateError(result.message);
+        return;
+      }
+
+      // 4. Save to localStorage BEFORE navigating
+      const title = formData.get("title");
+      const poll: CreatedPoll = {
+        id: result.pollId,
+        ownerKey,
+        title: typeof title === "string" ? title : "Untitled",
+        createdAt: Date.now(),
+      };
+      addPoll(poll);
+      router.push(`/${result.pollId}`);
+    } catch (error) {
+      setCreateError(
+        error instanceof Error ? error.message : "An unexpected error occurred"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function handleDeletePoll(pollId: string): void {
+    const ownerKey = getOwnerKey(pollId);
+    if (ownerKey === undefined) return;
+
+    const formData = new FormData();
+    formData.append("doodleId", pollId);
+    formData.append("ownerKey", ownerKey);
+
+    // Optimistically remove from local state
+    removePoll(pollId);
+
+    // Then delete from server (must be in startTransition for useActionState)
+    startTransition(() => {
+      deleteAction(formData);
+    });
+  }
 
   return (
     <div className="min-h-screen bg-base">
@@ -51,7 +132,7 @@ export default function Home(): ReactElement {
           Create a poll to find the best date for your group.
         </p>
 
-        <form action={formAction} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label
               htmlFor="title"
@@ -176,8 +257,8 @@ export default function Home(): ReactElement {
             value={settings.hideScores.toString()}
           />
 
-          {state?.status === "error" && (
-            <p className="text-sm text-red">{state.message}</p>
+          {createError !== null && (
+            <p className="text-sm text-red">{createError}</p>
           )}
 
           <button
@@ -188,6 +269,42 @@ export default function Home(): ReactElement {
             {isPending ? "Creating..." : "Create Poll"}
           </button>
         </form>
+
+        {/* Your Previous Polls */}
+        {!pollsLoading && polls.length > 0 && (
+          <section className="mt-12">
+            <h2 className="mb-4 text-xl font-semibold text-text">
+              Your Previous Polls
+            </h2>
+            {deleteState?.status === "error" && (
+              <p className="mb-4 text-sm text-red">{deleteState.message}</p>
+            )}
+            <ul className="space-y-2">
+              {polls.map((poll) => (
+                <li
+                  key={poll.id}
+                  className="flex items-center justify-between rounded-lg border border-surface1 bg-mantle px-4 py-3"
+                >
+                  <a
+                    href={`/${poll.id}`}
+                    className="text-blue hover:text-sapphire transition-colors truncate flex-1 mr-4"
+                  >
+                    {poll.title}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePoll(poll.id)}
+                    disabled={isDeleting}
+                    className="text-sm text-overlay1 hover:text-red transition-colors disabled:opacity-50"
+                    aria-label={`Delete poll: ${poll.title}`}
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
     </div>
   );
