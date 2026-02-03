@@ -2,19 +2,50 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
+import { eq, count } from "drizzle-orm";
 import { db, CreateDoodleSchema, CastVoteSchema } from "@/db";
 import { doodles, votes } from "@/db/schema";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export type ActionState =
   | null
   | { status: "error"; message: string }
   | { status: "success"; message: string; participantId?: string };
 
+async function getClientIp(): Promise<string> {
+  const headersList = await headers();
+  const forwarded = headersList.get("x-forwarded-for");
+  if (forwarded !== null) {
+    const parts = forwarded.split(",");
+    const firstPart = parts[0]?.trim();
+    if (firstPart !== undefined && firstPart !== "") {
+      return firstPart;
+    }
+  }
+  const realIp = headersList.get("x-real-ip");
+  if (realIp !== null && realIp !== "") {
+    return realIp;
+  }
+  return "unknown";
+}
+
 export async function createDoodle(
   prevState: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  // Rate limit: 10 polls per hour per IP
+  const ip = await getClientIp();
+  const { allowed, resetInSeconds } = checkRateLimit(ip, 10, 60 * 60 * 1000);
+
+  if (!allowed) {
+    const minutes = Math.ceil(resetInSeconds / 60);
+    return {
+      status: "error",
+      message: `Rate limit exceeded. Try again in ${minutes} minute${minutes > 1 ? "s" : ""}.`,
+    };
+  }
+
   // Handle dates - can be flat array or JSON-encoded grouped array
   const datesRaw = formData.getAll("dates");
   let dates: unknown;
@@ -114,9 +145,12 @@ export async function castVote(
   }
 
   // Filter out undefined responses for storage
-  const cleanResponses = Object.fromEntries(
-    Object.entries(result.data.responses).filter(([, v]) => v !== undefined)
-  ) as Record<string, "yes" | "maybe" | "no">;
+  const cleanResponses: Record<string, "yes" | "maybe" | "no"> = {};
+  for (const [key, value] of Object.entries(result.data.responses)) {
+    if (value !== undefined) {
+      cleanResponses[key] = value;
+    }
+  }
 
   // If participantId is provided, update existing vote
   if (result.data.participantId) {
@@ -145,7 +179,19 @@ export async function castVote(
     };
   }
 
-  // Otherwise, create new vote
+  // Otherwise, create new vote - check participant limit first
+  const [voteCount] = await db
+    .select({ value: count() })
+    .from(votes)
+    .where(eq(votes.doodleId, result.data.doodleId));
+
+  if (voteCount !== undefined && voteCount.value >= 50) {
+    return {
+      status: "error",
+      message: "This poll has reached the maximum of 50 participants.",
+    };
+  }
+
   const newId = crypto.randomUUID();
   await db.insert(votes).values({
     id: newId,
