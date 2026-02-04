@@ -13,6 +13,9 @@ import type { DatePattern } from "@/db/types";
 import { useCreatedPolls, type CreatedPoll } from "@/hooks/use-created-polls";
 import { hashOwnerKey } from "@/lib/crypto";
 
+// UX barrier, not real security - localStorage can be cleared by users
+const MAX_POLLS_PER_USER = 5;
+
 type PollSettings = {
   requireAllDates: boolean;
   allowMaybe: boolean;
@@ -60,6 +63,7 @@ export default function Home(): ReactElement {
   })();
 
   const isPending = isSubmitting;
+  const hasReachedPollLimit = polls.length >= MAX_POLLS_PER_USER;
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
@@ -132,6 +136,38 @@ export default function Home(): ReactElement {
           Create a poll to find the best date for your group.
         </p>
 
+        {/* Poll limit reached */}
+        {!pollsLoading && hasReachedPollLimit && (
+          <div className="mb-8 rounded-lg border border-yellow/30 bg-yellow/10 p-6">
+            <div className="flex items-start gap-3">
+              <svg
+                className="w-6 h-6 text-yellow flex-shrink-0 mt-0.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <div>
+                <h2 className="text-lg font-semibold text-text">
+                  Poll limit reached
+                </h2>
+                <p className="mt-1 text-sm text-subtext1">
+                  You&apos;ve reached the maximum of {MAX_POLLS_PER_USER} polls.
+                  Delete an existing poll below to create a new one.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create form - only show when under limit */}
+        {!hasReachedPollLimit && (
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label
@@ -232,6 +268,7 @@ export default function Home(): ReactElement {
                   Hide summary until user has voted
                 </span>
               </label>
+
             </div>
           </div>
 
@@ -269,13 +306,19 @@ export default function Home(): ReactElement {
             {isPending ? "Creating..." : "Create Poll"}
           </button>
         </form>
+        )}
 
         {/* Your Previous Polls */}
         {!pollsLoading && polls.length > 0 && (
-          <section className="mt-12">
-            <h2 className="mb-4 text-xl font-semibold text-text">
-              Your Previous Polls
-            </h2>
+          <section className={hasReachedPollLimit ? "" : "mt-12"}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-text">
+                Your Polls
+              </h2>
+              <span className="text-sm text-overlay1">
+                {polls.length} / {MAX_POLLS_PER_USER}
+              </span>
+            </div>
             {deleteState?.status === "error" && (
               <p className="mb-4 text-sm text-red">{deleteState.message}</p>
             )}

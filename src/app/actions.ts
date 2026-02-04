@@ -2,9 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { eq, count } from "drizzle-orm";
-import { db, CreateDoodleSchema, CastVoteSchema, DeleteDoodleSchema } from "@/db";
-import { doodles, votes } from "@/db/schema";
+import { eq, count, sql } from "drizzle-orm";
+import {
+  db,
+  CreateDoodleSchema,
+  CastVoteSchema,
+  DeleteDoodleSchema,
+  SubmitAccommodationSchema,
+  VoteAccommodationSchema,
+  DeleteAccommodationSchema,
+} from "@/db";
+import { doodles, votes, accommodations } from "@/db/schema";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { verifyOwnerKey } from "@/lib/crypto";
 
@@ -268,4 +276,237 @@ export async function deleteDoodle(
   await db.delete(doodles).where(eq(doodles.id, doodleId));
 
   return { status: "success", message: "Poll deleted" };
+}
+
+// ---- Accommodation Actions
+
+export type AccommodationActionState =
+  | null
+  | { status: "error"; message: string }
+  | { status: "success"; accommodationId: string };
+
+export async function submitAccommodation(
+  prevState: AccommodationActionState,
+  formData: FormData
+): Promise<AccommodationActionState> {
+  // Rate limit: 5 submits per hour per IP
+  const ip = await getClientIp();
+  const { allowed, resetInSeconds } = checkRateLimit(
+    `${ip}:accommodation:submit`,
+    5,
+    60 * 60 * 1000
+  );
+
+  if (!allowed) {
+    const minutes = Math.ceil(resetInSeconds / 60);
+    return {
+      status: "error",
+      message: `Rate limit exceeded. Try again in ${minutes} minute${minutes > 1 ? "s" : ""}.`,
+    };
+  }
+
+  // Parse metadata fields from form data (client provides these after scraping)
+  const titleRaw = formData.get("title");
+  const descriptionRaw = formData.get("description");
+  const imageUrlRaw = formData.get("imageUrl");
+  const siteNameRaw = formData.get("siteName");
+  const commentRaw = formData.get("comment");
+
+  const parseResult = SubmitAccommodationSchema.safeParse({
+    doodleId: formData.get("doodleId"),
+    url: formData.get("url"),
+    submitterName: formData.get("submitterName"),
+    comment: commentRaw || undefined,
+    title: titleRaw || null,
+    description: descriptionRaw || null,
+    imageUrl: imageUrlRaw || null,
+    siteName: siteNameRaw || null,
+  });
+
+  if (!parseResult.success) {
+    return {
+      status: "error",
+      message: parseResult.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const { doodleId, url, submitterName, comment, title, description, imageUrl, siteName } =
+    parseResult.data;
+
+  // Verify doodle exists
+  const doodle = await db.query.doodles.findFirst({
+    where: eq(doodles.id, doodleId),
+  });
+
+  if (doodle === undefined) {
+    return { status: "error", message: "Poll not found" };
+  }
+
+  // Check max 20 proposals per poll
+  const [accommodationCount] = await db
+    .select({ value: count() })
+    .from(accommodations)
+    .where(eq(accommodations.doodleId, doodleId));
+
+  if (accommodationCount !== undefined && accommodationCount.value >= 20) {
+    return {
+      status: "error",
+      message: "This poll has reached the maximum of 20 accommodation suggestions.",
+    };
+  }
+
+  const id = crypto.randomUUID();
+  await db.insert(accommodations).values({
+    id,
+    doodleId,
+    url,
+    title: title ?? null,
+    description: description ?? null,
+    imageUrl: imageUrl ?? null,
+    siteName: siteName ?? null,
+    upvotes: 0,
+    downvotes: 0,
+    submitterName,
+    comment: comment ?? null,
+    createdAt: new Date(),
+  });
+
+  revalidatePath(`/${doodleId}`);
+  return { status: "success", accommodationId: id };
+}
+
+export async function voteAccommodation(
+  prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  // Rate limit: 30 votes per hour per IP
+  const ip = await getClientIp();
+  const { allowed, resetInSeconds } = checkRateLimit(
+    `${ip}:accommodation:vote`,
+    30,
+    60 * 60 * 1000
+  );
+
+  if (!allowed) {
+    const minutes = Math.ceil(resetInSeconds / 60);
+    return {
+      status: "error",
+      message: `Rate limit exceeded. Try again in ${minutes} minute${minutes > 1 ? "s" : ""}.`,
+    };
+  }
+
+  const previousVoteRaw = formData.get("previousVote");
+  const previousVote =
+    previousVoteRaw === "up" || previousVoteRaw === "down" ? previousVoteRaw : null;
+
+  const parseResult = VoteAccommodationSchema.safeParse({
+    accommodationId: formData.get("accommodationId"),
+    voteType: formData.get("voteType"),
+  });
+
+  if (!parseResult.success) {
+    return {
+      status: "error",
+      message: parseResult.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const { accommodationId, voteType } = parseResult.data;
+
+  // Verify accommodation exists
+  const accommodation = await db.query.accommodations.findFirst({
+    where: eq(accommodations.id, accommodationId),
+  });
+
+  if (accommodation === undefined) {
+    return { status: "error", message: "Accommodation not found" };
+  }
+
+  // Apply vote change in a single atomic update to avoid race conditions
+  if (previousVote === null) {
+    // Fresh vote - just increment the appropriate counter
+    if (voteType === "up") {
+      await db
+        .update(accommodations)
+        .set({ upvotes: sql`upvotes + 1` })
+        .where(eq(accommodations.id, accommodationId));
+    } else {
+      await db
+        .update(accommodations)
+        .set({ downvotes: sql`downvotes + 1` })
+        .where(eq(accommodations.id, accommodationId));
+    }
+  } else if (previousVote === "up" && voteType === "down") {
+    // Changing from upvote to downvote
+    await db
+      .update(accommodations)
+      .set({ upvotes: sql`upvotes - 1`, downvotes: sql`downvotes + 1` })
+      .where(eq(accommodations.id, accommodationId));
+  } else if (previousVote === "down" && voteType === "up") {
+    // Changing from downvote to upvote
+    await db
+      .update(accommodations)
+      .set({ upvotes: sql`upvotes + 1`, downvotes: sql`downvotes - 1` })
+      .where(eq(accommodations.id, accommodationId));
+  }
+  // Note: previousVote === voteType case is blocked on the client side
+
+  revalidatePath(`/${accommodation.doodleId}`);
+  return { status: "success", message: "Vote recorded" };
+}
+
+export async function deleteAccommodation(
+  prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const parseResult = DeleteAccommodationSchema.safeParse({
+    accommodationId: formData.get("accommodationId"),
+    ownerKey: formData.get("ownerKey"),
+  });
+
+  if (!parseResult.success) {
+    return {
+      status: "error",
+      message: parseResult.error.issues[0]?.message ?? "Invalid request",
+    };
+  }
+
+  const { accommodationId, ownerKey } = parseResult.data;
+
+  // Find the accommodation
+  const accommodation = await db.query.accommodations.findFirst({
+    where: eq(accommodations.id, accommodationId),
+  });
+
+  if (accommodation === undefined) {
+    return { status: "error", message: "Accommodation not found" };
+  }
+
+  // Find the parent doodle to verify ownership
+  const doodle = await db.query.doodles.findFirst({
+    where: eq(doodles.id, accommodation.doodleId),
+  });
+
+  if (doodle === undefined) {
+    return { status: "error", message: "Poll not found" };
+  }
+
+  // Check if this poll has an owner key hash
+  if (doodle.ownerKeyHash === null) {
+    return {
+      status: "error",
+      message: "This poll cannot have accommodations deleted (created before ownership feature)",
+    };
+  }
+
+  // Verify ownership using timing-safe comparison
+  if (!verifyOwnerKey(ownerKey, doodle.ownerKeyHash)) {
+    return { status: "error", message: "Unauthorized" };
+  }
+
+  // Delete the accommodation
+  await db.delete(accommodations).where(eq(accommodations.id, accommodationId));
+
+  revalidatePath(`/${accommodation.doodleId}`);
+  return { status: "success", message: "Accommodation deleted" };
 }

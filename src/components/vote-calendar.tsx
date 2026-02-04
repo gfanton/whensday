@@ -35,13 +35,20 @@ type CalendarModifiers = {
 // ---- Static Class Names (no dependencies, defined outside component)
 
 const modifiersClassNames = {
-  evenGroup: "bg-blue/50",
-  oddGroup: "bg-sapphire/50",
-  highVotes: "!bg-green/70 [&>button]:font-semibold",
-  mediumVotes: "!bg-yellow/50",
-  lowVotes: "opacity-50",
-  userSelected: "ring-3 ring-peach ring-inset [&>button]:font-bold",
-  today: "[&>button]:text-peach [&>button]:font-bold",
+  // Background colors applied to button for rounded pill effect
+  evenGroup: "[&>button]:bg-blue/25 [&>button]:border [&>button]:border-blue/20",
+  oddGroup: "[&>button]:bg-sapphire/25 [&>button]:border [&>button]:border-sapphire/20",
+  // Vote intensity - stronger colors with dark text for contrast
+  highVotes:
+    "[&>button]:!bg-green/60 [&>button]:!border-green/40 [&>button]:text-crust [&>button]:font-semibold",
+  mediumVotes:
+    "[&>button]:!bg-yellow/45 [&>button]:!border-yellow/30 [&>button]:text-crust [&>button]:font-medium",
+  lowVotes:
+    "[&>button]:!bg-surface1/80 [&>button]:!border-surface2/50 [&>button]:text-subtext0",
+  // User selection - peach dot indicator (positioned higher)
+  userSelected:
+    "[&>button]:relative [&>button]:after:absolute [&>button]:after:bottom-2.5 [&>button]:after:left-1/2 [&>button]:after:-translate-x-1/2 [&>button]:after:w-1.5 [&>button]:after:h-1.5 [&>button]:after:rounded-full [&>button]:after:bg-peach [&>button]:after:shadow-sm",
+  today: "[&>button]:!text-peach",
 } as const;
 
 const dayPickerClassNames = {
@@ -51,24 +58,24 @@ const dayPickerClassNames = {
   month_caption: "flex justify-center items-center h-12",
   caption_label: "text-base font-semibold text-text",
   nav: "absolute inset-x-0 top-0 flex justify-between items-center h-12 px-2",
-  button_previous: "p-2 rounded-md hover:bg-surface1 transition-colors",
-  button_next: "p-2 rounded-md hover:bg-surface1 transition-colors",
+  button_previous: "p-2 rounded-lg hover:bg-surface1 transition-colors",
+  button_next: "p-2 rounded-lg hover:bg-surface1 transition-colors",
   chevron: "fill-lavender",
   month_grid: "w-full border-collapse table-fixed",
-  weekdays: "flex w-full",
-  weekday: "flex-1 text-center text-sm font-medium text-overlay1 py-3",
-  week: "flex w-full",
-  day: "flex-1 relative p-1 text-center text-base aspect-square flex items-center justify-center",
+  weekdays: "flex w-full gap-1",
+  weekday: "flex-1 text-center text-xs font-semibold text-overlay1 py-3 uppercase tracking-wide",
+  week: "flex w-full gap-1",
+  day: "flex-1 relative p-0.5 text-center aspect-square flex items-center justify-center",
   day_button:
-    "w-full h-full flex items-center justify-center rounded-lg text-text font-medium cursor-default focus:outline-none disabled:text-surface2 disabled:font-normal",
+    "w-full h-full flex items-center justify-center rounded-lg text-base text-text font-medium cursor-default focus:outline-none disabled:text-overlay0 disabled:font-normal transition-all",
   selected: "",
-  today: "[&>button]:text-peach [&>button]:font-bold",
-  disabled: "[&>button]:text-surface2 [&>button]:font-normal",
+  today: "[&>button]:!text-peach",
+  disabled: "[&>button]:bg-transparent [&>button]:border-transparent",
 } as const;
 
 export function VoteCalendar({
   dates,
-  pattern: _pattern,
+  pattern: _pattern, // Reserved for future group visualization
   votes,
   currentUserResponses,
 }: VoteCalendarProps): ReactElement {
@@ -262,19 +269,25 @@ export function VoteCalendar({
       />
 
       {/* Legend */}
-      <div className="flex flex-wrap justify-center gap-6 text-sm text-subtext1 pt-2">
-        <div className="flex items-center gap-2">
-          <span className="w-5 h-5 rounded bg-green/70" />
-          <span>High yes votes</span>
+      <div className="flex flex-wrap justify-center gap-4 text-xs text-subtext1 pt-3">
+        <div className="flex items-center gap-1.5">
+          <span className="w-5 h-5 rounded-md bg-green/60 border border-green/40" />
+          <span>Popular</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-5 h-5 rounded bg-yellow/50" />
-          <span>Some yes votes</span>
+        <div className="flex items-center gap-1.5">
+          <span className="w-5 h-5 rounded-md bg-yellow/45 border border-yellow/30" />
+          <span>Some interest</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-5 h-5 rounded-md bg-surface1/80 border border-surface2/50" />
+          <span>Low interest</span>
         </div>
         {currentUserResponses && (
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded bg-surface1 ring-3 ring-peach ring-inset" />
-            <span>Your selection</span>
+          <div className="flex items-center gap-1.5">
+            <span className="relative w-5 h-5 rounded-md bg-surface1 border border-surface2/50">
+              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-peach" />
+            </span>
+            <span>Your vote</span>
           </div>
         )}
       </div>

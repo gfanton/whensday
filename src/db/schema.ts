@@ -29,3 +29,20 @@ export const votes = sqliteTable("votes", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }),
 });
+
+export const accommodations = sqliteTable("accommodations", {
+  id: text("id").primaryKey(),
+  doodleId: text("doodle_id")
+    .notNull()
+    .references(() => doodles.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  title: text("title"),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  siteName: text("site_name"),
+  upvotes: integer("upvotes").default(0),
+  downvotes: integer("downvotes").default(0),
+  submitterName: text("submitter_name").notNull(),
+  comment: text("comment"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});

@@ -277,7 +277,7 @@ export function countPossibleGroups(pattern: DatePattern, range: DateRange): num
  * Calculate remaining days that don't form a complete group.
  * For weekday-range patterns, this is always 0 since we find weekly occurrences.
  */
-export function getRemainingDays(pattern: DatePattern, range: DateRange): number {
+export function getRemainingDays(pattern: DatePattern, _range: DateRange): number {
   if (pattern.type === "weekend" || pattern.type === "weekday-range") {
     // For weekend and weekday-range, remaining days don't apply the same way
     return 0;

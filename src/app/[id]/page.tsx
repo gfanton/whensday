@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { doodles, votes } from "@/db/schema";
+import { doodles, votes, accommodations } from "@/db/schema";
 import { VoteSection } from "./vote-section";
 import { ShareButton } from "./vote-form";
 
@@ -28,6 +28,12 @@ export default async function DoodlePage({
     orderBy: (votes, { asc }) => [asc(votes.createdAt)],
   });
 
+  // Fetch accommodations
+  const allAccommodations = await db.query.accommodations.findMany({
+    where: eq(accommodations.doodleId, id),
+    orderBy: (accommodations, { desc }) => [desc(accommodations.createdAt)],
+  });
+
   // Convert to serializable data (no Date objects)
   const serializableDoodle = {
     id: doodle.id,
@@ -48,6 +54,20 @@ export default async function DoodlePage({
     responses: vote.responses,
   }));
 
+  const serializableAccommodations = allAccommodations.map((acc) => ({
+    id: acc.id,
+    doodleId: acc.doodleId,
+    url: acc.url,
+    title: acc.title,
+    description: acc.description,
+    imageUrl: acc.imageUrl,
+    siteName: acc.siteName,
+    upvotes: acc.upvotes,
+    downvotes: acc.downvotes,
+    submitterName: acc.submitterName,
+    comment: acc.comment,
+  }));
+
   return (
     <div className="min-h-screen bg-base">
       <main className="mx-auto max-w-3xl px-4 py-12">
@@ -59,7 +79,11 @@ export default async function DoodlePage({
           <ShareButton />
         </header>
 
-        <VoteSection doodle={serializableDoodle} votes={serializableVotes} />
+        <VoteSection
+          doodle={serializableDoodle}
+          votes={serializableVotes}
+          accommodations={serializableAccommodations}
+        />
       </main>
     </div>
   );
