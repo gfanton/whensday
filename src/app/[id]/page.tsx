@@ -71,10 +71,10 @@ export default async function DoodlePage({
 
   return (
     <div className="relative min-h-screen bg-base">
-      {/* Mobile: Icon button in top-right */}
+      {/* Mobile: Icon button in top-right, aligned with title */}
       <a
         href="/"
-        className="absolute top-6 right-6 z-50 w-14 h-14 rounded-full bg-surface0 border border-surface1 flex items-center justify-center hover:border-blue hover:scale-105 active:scale-95 transition-all sm:hidden"
+        className="absolute top-7 right-4 z-50 w-12 h-12 rounded-full bg-surface0 border border-surface1 flex items-center justify-center hover:border-blue hover:scale-105 active:scale-95 transition-all sm:hidden"
         title="Back to home"
       >
         <Image
@@ -82,11 +82,11 @@ export default async function DoodlePage({
           alt="Back to home"
           width={128}
           height={128}
-          className="w-9 h-7"
+          className="w-7 h-6"
         />
       </a>
 
-      <main className="mx-auto max-w-3xl px-4 pt-20 sm:pt-12 pb-12">
+      <main className="mx-auto max-w-3xl px-4 pt-8 sm:pt-12 pb-12">
         <header className="mb-8 flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold text-text">{doodle.title}</h1>
