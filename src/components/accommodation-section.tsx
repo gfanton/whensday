@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useActionState, startTransition } from "re
 import type { AccommodationData } from "@/db";
 import { AccommodationCard } from "./accommodation-card";
 import { useAccommodationVotes } from "@/hooks/use-accommodation-votes";
-import { MetadataSchema, type Metadata } from "@/lib/opengraph";
+import { MetadataSchema, type Metadata } from "@/lib/opengraph-schema";
 import {
   submitAccommodation,
   voteAccommodation,

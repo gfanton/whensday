@@ -1,4 +1,6 @@
-# Whensday
+<p align="center">
+  <img src="public/title-512.png" alt="Whensday" width="400">
+</p>
 
 Simple, opinionated Doodle-like app for scheduling.
 

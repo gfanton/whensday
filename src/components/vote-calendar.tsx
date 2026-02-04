@@ -45,9 +45,9 @@ const modifiersClassNames = {
     "[&>button]:!bg-yellow/45 [&>button]:!border-yellow/30 [&>button]:text-crust [&>button]:font-medium",
   lowVotes:
     "[&>button]:!bg-surface1/80 [&>button]:!border-surface2/50 [&>button]:text-subtext0",
-  // User selection - peach dot indicator (positioned higher)
+  // User selection - peach dot indicator (smaller/lower on mobile, larger/higher on desktop)
   userSelected:
-    "[&>button]:relative [&>button]:after:absolute [&>button]:after:bottom-2.5 [&>button]:after:left-1/2 [&>button]:after:-translate-x-1/2 [&>button]:after:w-1.5 [&>button]:after:h-1.5 [&>button]:after:rounded-full [&>button]:after:bg-peach [&>button]:after:shadow-sm",
+    "[&>button]:relative [&>button]:after:absolute [&>button]:after:bottom-0.5 [&>button]:after:sm:bottom-1.5 [&>button]:after:left-1/2 [&>button]:after:-translate-x-1/2 [&>button]:after:w-1 [&>button]:after:h-1 [&>button]:after:sm:w-1.5 [&>button]:after:sm:h-1.5 [&>button]:after:rounded-full [&>button]:after:bg-peach [&>button]:after:shadow-sm",
   today: "[&>button]:!text-peach",
 } as const;
 
@@ -269,23 +269,23 @@ export function VoteCalendar({
       />
 
       {/* Legend */}
-      <div className="flex flex-wrap justify-center gap-4 text-xs text-subtext1 pt-3">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-center gap-2 sm:gap-4 text-xs text-subtext1 pt-1">
         <div className="flex items-center gap-1.5">
-          <span className="w-5 h-5 rounded-md bg-green/60 border border-green/40" />
+          <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-md bg-green/60 border border-green/40 flex-shrink-0" />
           <span>Popular</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-5 h-5 rounded-md bg-yellow/45 border border-yellow/30" />
+          <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-md bg-yellow/45 border border-yellow/30 flex-shrink-0" />
           <span>Some interest</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-5 h-5 rounded-md bg-surface1/80 border border-surface2/50" />
+          <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-md bg-surface1/80 border border-surface2/50 flex-shrink-0" />
           <span>Low interest</span>
         </div>
         {currentUserResponses && (
           <div className="flex items-center gap-1.5">
-            <span className="relative w-5 h-5 rounded-md bg-surface1 border border-surface2/50">
-              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-peach" />
+            <span className="relative w-4 h-4 sm:w-5 sm:h-5 rounded-md bg-surface1 border border-surface2/50 flex-shrink-0">
+              <span className="absolute bottom-0.5 sm:bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-peach" />
             </span>
             <span>Your vote</span>
           </div>

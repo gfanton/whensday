@@ -3,6 +3,7 @@
 import type { ReactElement, FormEvent } from "react";
 import { useState, useActionState, startTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   createDoodle,
   deleteDoodle,
@@ -131,10 +132,19 @@ export default function Home(): ReactElement {
   return (
     <div className="min-h-screen bg-base">
       <main className="mx-auto max-w-2xl px-4 py-12">
-        <h1 className="mb-2 text-3xl font-bold text-text">Whensday</h1>
-        <p className="mb-8 text-subtext0">
-          Create a poll to find the best date for your group.
-        </p>
+        <div className="text-center mb-8">
+          <Image
+            src="/title-1024.png"
+            alt="Whensday"
+            width={816}
+            height={201}
+            priority
+            className="h-16 sm:h-20 w-auto mx-auto mb-2"
+          />
+          <p className="text-subtext0">
+            Create a poll to find the best date for your group.
+          </p>
+        </div>
 
         {/* Poll limit reached */}
         {!pollsLoading && hasReachedPollLimit && (

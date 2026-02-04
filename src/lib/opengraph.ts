@@ -1,5 +1,9 @@
 import ogs from "open-graph-scraper";
 import { z } from "zod";
+import type { Metadata } from "./opengraph-schema";
+
+// Re-export for backwards compatibility
+export { MetadataSchema, type Metadata } from "./opengraph-schema";
 
 // ---- Zod Schema for External API Response
 
@@ -15,17 +19,6 @@ const OgMetadataSchema = z.object({
     .optional(),
   ogSiteName: z.string().optional(),
 });
-
-// ---- Output Schema (Single Source of Truth)
-
-export const MetadataSchema = z.object({
-  title: z.string().nullable(),
-  description: z.string().nullable(),
-  imageUrl: z.string().nullable(),
-  siteName: z.string().nullable(),
-});
-
-export type Metadata = z.infer<typeof MetadataSchema>;
 
 // ---- User Agent Strategies
 
