@@ -157,31 +157,56 @@ export function VoteForm({
     return weeks;
   }, [dates, isGrouped]);
 
+  // Get next state in the cycle: undefined → yes → maybe? → no → undefined
+  function getNextState(current: ResponseValue): ResponseValue {
+    switch (current) {
+      case undefined:
+        return "yes";
+      case "yes":
+        return allowMaybe ? "maybe" : "no";
+      case "maybe":
+        return "no";
+      case "no":
+        return undefined;
+      default:
+        return assertNever(current);
+    }
+  }
+
   function cycleResponse(key: string): void {
     const current = responses[key];
-    let next: ResponseValue;
+    setResponses({ ...responses, [key]: getNextState(current) });
+  }
 
-    if (allowMaybe) {
-      // 4-state cycle: undefined → yes → maybe → no → undefined
-      next =
-        current === undefined
-          ? "yes"
-          : current === "yes"
-            ? "maybe"
-            : current === "maybe"
-              ? "no"
-              : undefined;
-    } else {
-      // 3-state cycle: undefined → yes → no → undefined
-      next =
-        current === undefined
-          ? "yes"
-          : current === "yes"
-            ? "no"
-            : undefined;
+  // Cycle multiple keys at once (for row/global toggles)
+  function cycleMultiple(keys: string[]): void {
+    if (keys.length === 0) return;
+
+    const states = keys.map((k) => responses[k]);
+    // With noUncheckedIndexedAccess, firstState is ResponseValue | undefined.
+    // Since ResponseValue already includes undefined, this works correctly.
+    const firstState = states[0];
+    const allSame = states.every((s) => s === firstState);
+
+    // Mixed states → reset to "yes", otherwise cycle to next state
+    const next = allSame ? getNextState(firstState) : "yes";
+
+    const newResponses = { ...responses };
+    for (const key of keys) {
+      newResponses[key] = next;
     }
+    setResponses(newResponses);
+  }
 
-    setResponses({ ...responses, [key]: next });
+  // Get aggregate state for styling toggle buttons
+  function getAggregateState(keys: string[]): ResponseValue | "mixed" {
+    if (keys.length === 0) return undefined;
+
+    const states = keys.map((k) => responses[k]);
+    // With noUncheckedIndexedAccess, firstState is ResponseValue | undefined.
+    // Since ResponseValue includes undefined, this works correctly.
+    const firstState = states[0];
+    return states.every((s) => s === firstState) ? firstState : "mixed";
   }
 
   function getButtonStyle(response: ResponseValue): string {
@@ -214,6 +239,23 @@ export function VoteForm({
     }
   }
 
+  function getToggleStyle(state: ResponseValue | "mixed"): string {
+    switch (state) {
+      case "yes":
+        return "bg-green/30 text-green hover:bg-green/50";
+      case "maybe":
+        return "bg-yellow/30 text-yellow hover:bg-yellow/50";
+      case "no":
+        return "bg-red/30 text-red hover:bg-red/50";
+      case "mixed":
+        return "bg-blue/20 text-blue hover:bg-blue/30";
+      case undefined:
+        return "bg-surface0 text-overlay0 hover:bg-surface1";
+      default:
+        return assertNever(state as never);
+    }
+  }
+
   const answeredOptions = votingOptions.filter(
     (opt) => responses[opt.key] !== undefined
   );
@@ -222,6 +264,15 @@ export function VoteForm({
     ? allOptionsAnswered
     : answeredOptions.length > 0;
   const isEditing = Boolean(participantId);
+
+  // All option keys for global toggle - derive from stable dates prop
+  const allOptionKeys = useMemo(
+    () =>
+      isGrouped
+        ? dates.map((_, index) => String(index))
+        : (dates as string[]),
+    [dates, isGrouped]
+  );
 
   // Response summary for collapsed view
   const responseSummary = useMemo(() => {
@@ -295,21 +346,33 @@ export function VoteForm({
             </span>
           </div>
           {datesExpanded && (
-            <button
-              type="button"
-              onClick={toggleDatesExpanded}
-              className="flex items-center gap-1.5 text-xs text-overlay1 hover:text-subtext1 transition-colors px-2 py-1 rounded hover:bg-surface0"
-            >
-              <span>Hide</span>
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <div className="flex items-center gap-2">
+              {/* Global toggle button */}
+              <button
+                type="button"
+                onClick={() => cycleMultiple(allOptionKeys)}
+                className="text-xs px-2 py-1 rounded bg-surface0 hover:bg-surface1 text-overlay1 hover:text-subtext1 transition-colors"
+                title="Toggle all dates"
+                aria-label={`Toggle all ${votingOptions.length} dates`}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-              </svg>
-            </button>
+                All ↻
+              </button>
+              <button
+                type="button"
+                onClick={toggleDatesExpanded}
+                className="flex items-center gap-1.5 text-xs text-overlay1 hover:text-subtext1 transition-colors px-2 py-1 rounded hover:bg-surface0"
+              >
+                <span>Hide</span>
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+            </div>
           )}
         </div>
 
@@ -383,51 +446,81 @@ export function VoteForm({
         {/* Flexible mode: week-aligned grid */}
         {!isGrouped && weekGrid && (
           <div className="space-y-1">
-            {/* Weekday headers */}
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                <div
-                  key={day}
-                  className="text-center text-xs font-semibold text-overlay1 uppercase tracking-wide py-1"
-                >
-                  {day}
-                </div>
-              ))}
+            {/* Weekday headers with left spacer for row toggle alignment */}
+            <div className="flex gap-1">
+              <div className="w-7 md:w-9 shrink-0" />
+              <div className="grid grid-cols-7 gap-1 flex-1 mb-2">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                  <div
+                    key={day}
+                    className="text-center text-xs font-semibold text-overlay1 uppercase tracking-wide py-1"
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Week rows */}
-            {weekGrid.map((week, weekIndex) => (
-              <div key={weekIndex} className="grid grid-cols-7 gap-1">
-                {week.map((day) => {
-                  const dateStr = format(day.date, "yyyy-MM-dd");
+            {weekGrid.map((week, weekIndex) => {
+              const weekKeys = week
+                .filter((day) => day.isOption)
+                .map((day) => format(day.date, "yyyy-MM-dd"));
 
-                  if (!day.isOption) {
-                    // Empty cell for non-option days
-                    return <div key={dateStr} className="aspect-square" />;
-                  }
+              const hasOptions = weekKeys.length > 0;
+              const aggregateState = getAggregateState(weekKeys);
 
-                  const response = responses[dateStr];
-                  return (
+              return (
+                <div key={weekIndex} className="flex gap-1">
+                  {/* Row toggle button - only show if week has votable dates */}
+                  {hasOptions ? (
                     <button
-                      key={dateStr}
                       type="button"
-                      onClick={() => cycleResponse(dateStr)}
-                      className={`flex flex-col items-center justify-center rounded-lg aspect-square text-sm transition-colors ${getButtonStyle(response)}`}
+                      onClick={() => cycleMultiple(weekKeys)}
+                      className={`w-7 h-7 md:w-9 md:h-9 shrink-0 rounded-full self-center flex items-center justify-center text-xs md:text-sm transition-colors ${getToggleStyle(aggregateState)}`}
+                      title="Toggle this week"
+                      aria-label={`Toggle week ${weekIndex + 1}`}
                     >
-                      <span className="font-medium">
-                        {format(day.date, "d")}
-                      </span>
-                      <span className="text-[10px] opacity-80">
-                        {format(day.date, "MMM")}
-                      </span>
-                      <span className="text-[10px] font-semibold">
-                        {getButtonLabel(response)}
-                      </span>
+                      ↻
                     </button>
-                  );
-                })}
-              </div>
-            ))}
+                  ) : (
+                    <div className="w-7 md:w-9 shrink-0" />
+                  )}
+
+                  {/* Date cells */}
+                  <div className="grid grid-cols-7 gap-1 flex-1">
+                    {week.map((day) => {
+                      const dateStr = format(day.date, "yyyy-MM-dd");
+
+                      if (!day.isOption) {
+                        // Empty cell for non-option days
+                        return <div key={dateStr} className="aspect-square" />;
+                      }
+
+                      const response = responses[dateStr];
+                      return (
+                        <button
+                          key={dateStr}
+                          type="button"
+                          onClick={() => cycleResponse(dateStr)}
+                          className={`flex flex-col items-center justify-center rounded-lg aspect-square text-sm transition-colors ${getButtonStyle(response)}`}
+                        >
+                          <span className="font-medium">
+                            {format(day.date, "d")}
+                          </span>
+                          <span className="text-[10px] opacity-80">
+                            {format(day.date, "MMM")}
+                          </span>
+                          <span className="text-[10px] font-semibold">
+                            {getButtonLabel(response)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
         </div>
